@@ -33,6 +33,7 @@ Item {
     }
 
     Text {
+        textFormat: Text.PlainText
         x: 10
         anchors.verticalCenter: parent.verticalCenter
         width: parent.width - 62

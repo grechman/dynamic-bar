@@ -139,6 +139,7 @@ Item {
                     }
 
                     Text {
+                        textFormat: Text.PlainText
                         anchors.fill: parent
                         anchors.margins: 9
                         visible: card.note
@@ -152,6 +153,7 @@ Item {
                     }
 
                     Text {
+                        textFormat: Text.PlainText
                         anchors.centerIn: parent
                         visible: card.image && !modelData.thumb
                         text: "\uf03e"
@@ -161,6 +163,7 @@ Item {
                     }
 
                     Text {
+                        textFormat: Text.PlainText
                         anchors.centerIn: parent
                         visible: !card.image && !card.note
                         text: "\uf15b"
@@ -180,6 +183,7 @@ Item {
                         color: Qt.rgba(root.bg.r, root.bg.g, root.bg.b, 0.72)
 
                         Text {
+                            textFormat: Text.PlainText
                             anchors.fill: parent
                             anchors.leftMargin: 8
                             anchors.rightMargin: 8
@@ -205,6 +209,7 @@ Item {
                         color: kill.containsMouse ? root.crit : Qt.rgba(root.bg.r, root.bg.g, root.bg.b, 0.85)
 
                         Text {
+                            textFormat: Text.PlainText
                             anchors.centerIn: parent
                             text: "\uf00d"
                             font.family: root.fontFamily
@@ -266,6 +271,7 @@ Item {
     }
 
     Text {
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         visible: root.items.length === 0
         text: "drop a screenshot or some text here"

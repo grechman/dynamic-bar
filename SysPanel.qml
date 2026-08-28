@@ -197,6 +197,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 anchors.left: parent.left
                 anchors.leftMargin: 44
                 anchors.verticalCenter: parent.verticalCenter
@@ -245,6 +246,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             anchors.centerIn: parent
                             text: parent.modelData.icon
                             font.family: root.fontFamily
@@ -270,6 +272,7 @@ Item {
             height: 26
 
             Text {
+                textFormat: Text.PlainText
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width
@@ -295,6 +298,7 @@ Item {
             readonly property bool muted: audio ? audio.muted : false
 
             Text {
+                textFormat: Text.PlainText
                 id: volIcon
 
                 anchors.left: parent.left
@@ -393,6 +397,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: Math.round(parent.level * 100) + "%"
@@ -473,6 +478,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             x: 10
                             y: 9
                             text: root.signalGlyph(netRow.modelData.signalStrength)
@@ -482,6 +488,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             x: 38
                             y: 10
                             width: parent.width - 38 - 84
@@ -493,6 +500,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             x: parent.width - 80
                             y: 12
                             text: netRow.modelData.stateChanging ? "…" : root.open(netRow.modelData.security) ? "" : "󰌾"
@@ -502,6 +510,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             x: parent.width - 56
                             y: 12
                             width: 46
@@ -548,6 +557,7 @@ Item {
                             }
 
                             Text {
+                                textFormat: Text.PlainText
                                 x: 9
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "󰌾"
@@ -588,6 +598,7 @@ Item {
                                 }
 
                                 Text {
+                                    textFormat: Text.PlainText
                                     anchors.fill: parent
                                     verticalAlignment: Text.AlignVCenter
                                     visible: !psk.text.length
@@ -608,6 +619,7 @@ Item {
             clip: true
 
             Text {
+                textFormat: Text.PlainText
                 anchors.left: parent.left
                 anchors.leftMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
@@ -676,6 +688,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             x: 10
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.btGlyph(btRow.modelData.icon, btRow.modelData.name)
@@ -685,6 +698,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             x: 38
                             anchors.verticalCenter: parent.verticalCenter
                             width: parent.width - 38 - 112
@@ -696,6 +710,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             x: parent.width - 108
                             width: 98
                             anchors.verticalCenter: parent.verticalCenter
@@ -748,6 +763,7 @@ Item {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     anchors.centerIn: parent
                     text: root.adapter && root.adapter.discovering ? "stop scanning" : "scan for devices"
                     font.family: root.fontFamily

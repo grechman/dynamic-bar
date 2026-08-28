@@ -189,6 +189,7 @@ Item {
                         height: 34
 
                         Text {
+                            textFormat: Text.PlainText
                             x: 10
                             y: 4
                             width: 108
@@ -200,6 +201,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             x: 124
                             y: 4
                             width: 44
@@ -221,6 +223,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             x: column.width - 62
                             y: 4
                             width: 52
@@ -232,6 +235,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             x: 10
                             y: 19
                             text: row.modelData.resets_available ? row.modelData.resets_available + " reset banked" : ""
@@ -305,6 +309,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             anchors.centerIn: parent
                             text: parent.modelData.tag
                             font.family: root.fontFamily
@@ -372,6 +377,7 @@ Item {
                 height: 26
 
                 Text {
+                    textFormat: Text.PlainText
                     x: 10
                     anchors.verticalCenter: parent.verticalCenter
                     text: parent.modelData.key
@@ -381,6 +387,7 @@ Item {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     x: parent.width - width - 10
                     anchors.verticalCenter: parent.verticalCenter
                     text: parent.modelData.value
@@ -396,6 +403,7 @@ Item {
             height: 26
 
             Text {
+                textFormat: Text.PlainText
                 x: 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.freshness

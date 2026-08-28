@@ -282,6 +282,7 @@ Item {
                 height: 26
 
                 Text {
+                    textFormat: Text.PlainText
                     id: ramGlyph
 
                     anchors.centerIn: parent
@@ -300,6 +301,7 @@ Item {
                     clip: true
 
                     Text {
+                        textFormat: Text.PlainText
                         x: ramGlyph.x
                         y: ramGlyph.y - (parent.parent.height - parent.height - 4)
                         text: ramGlyph.text
@@ -317,6 +319,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 x: glyphs.slotX(2)
                 anchors.verticalCenter: parent.verticalCenter
                 width: 26
@@ -328,6 +331,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 x: glyphs.slotX(3)
                 anchors.verticalCenter: parent.verticalCenter
                 width: 26
@@ -352,6 +356,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 x: glyphs.slotX(4)
                 anchors.verticalCenter: parent.verticalCenter
                 width: 26
@@ -381,6 +386,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 x: glyphs.slotX(6)
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: 0.5

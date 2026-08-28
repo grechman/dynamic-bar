@@ -22,6 +22,7 @@ Item {
     height: 36
 
     Text {
+        textFormat: Text.PlainText
         id: title
 
         x: 10
@@ -34,6 +35,7 @@ Item {
     }
 
     Text {
+        textFormat: Text.PlainText
         x: title.x + title.width + 10
         anchors.verticalCenter: parent.verticalCenter
         width: parent.width - x - (root.switchable ? 62 : 12)

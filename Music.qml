@@ -461,6 +461,7 @@ Item {
                 height: 23
 
                 Text {
+                    textFormat: Text.PlainText
                     anchors.centerIn: parent
                     text: parent.glyph
                     font.family: root.fontFamily

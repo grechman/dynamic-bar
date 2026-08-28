@@ -2,6 +2,7 @@ import datetime
 import glob
 import json
 import os
+import stat
 import sys
 
 HOME = os.path.expanduser("~")
@@ -28,9 +29,47 @@ BUILTIN_RATES = {
 }
 
 
+FILE_CAP = 1 << 20
+RESPONSE_CAP = 1 << 20
+
+
+def safe_open(path, cap=None, any_owner=False, binary=False):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError(f"not a regular file: {path}")
+        if not any_owner and info.st_uid != os.getuid():
+            raise OSError(f"not owned by us: {path}")
+        if cap is not None and info.st_size > cap:
+            raise OSError(f"too large: {path}")
+    except OSError:
+        os.close(fd)
+        raise
+    if binary:
+        return os.fdopen(fd, "rb")
+    return os.fdopen(fd, "r", encoding="utf-8", errors="replace")
+
+
+def read_text(path, cap=FILE_CAP, any_owner=False):
+    with safe_open(path, cap, any_owner) as handle:
+        return handle.read(cap + 1)
+
+
+def read_json(path, cap=FILE_CAP):
+    return json.loads(read_text(path, cap))
+
+
+def read_body(response, cap=RESPONSE_CAP):
+    raw = response.read(cap + 1)
+    if len(raw) > cap:
+        raise ValueError("response too large")
+    return raw
+
+
 def rates():
     try:
-        doc = json.load(open(RATES))["document"]
+        doc = read_json(RATES, 64 << 20)["document"]
     except (OSError, KeyError, ValueError):
         return {}
     if isinstance(doc, str):
@@ -62,7 +101,7 @@ def price(table, model):
 
 def load_cache():
     try:
-        return json.load(open(CACHE))
+        return read_json(CACHE, 64 << 20)
     except (OSError, ValueError):
         return {"files": {}}
 
@@ -77,9 +116,13 @@ def save_cache(data):
 
 def harvest(path):
     out = []
-    with open(path, errors="ignore") as handle:
+    try:
+        handle = safe_open(path)
+    except OSError:
+        return out
+    with handle:
         for line in handle:
-            if '"usage"' not in line:
+            if len(line) > RESPONSE_CAP or '"usage"' not in line:
                 continue
             try:
                 row = json.loads(line)

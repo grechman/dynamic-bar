@@ -390,6 +390,7 @@ Item {
                 opacity: 1
 
                 Text {
+                    textFormat: Text.PlainText
                     id: glyph
 
                     anchors.verticalCenter: parent.verticalCenter
@@ -403,6 +404,7 @@ Item {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     id: label
 
                     anchors.verticalCenter: parent.verticalCenter
@@ -416,6 +418,7 @@ Item {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     id: note
 
                     anchors.verticalCenter: parent.verticalCenter
@@ -429,6 +432,7 @@ Item {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     id: clock
 
                     anchors.verticalCenter: parent.verticalCenter
@@ -482,6 +486,7 @@ Item {
             spacing: 0
 
             Text {
+                textFormat: Text.PlainText
                 visible: view.pending.icon !== ""
                 text: view.pending.icon
                 font.family: glyph.font.family
@@ -491,6 +496,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 visible: view.pending.text !== ""
                 text: view.pending.text
                 font.family: label.font.family
@@ -500,6 +506,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 visible: view.pending.note !== ""
                 text: view.pending.note
                 font.family: note.font.family
@@ -509,6 +516,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 visible: view.pending.showClock
                 text: view.clockText
                 font.family: clock.font.family
@@ -741,6 +749,7 @@ Item {
         }
 
         Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             anchors.verticalCenterOffset: -1
             text: "\uf0c6"
@@ -763,6 +772,7 @@ Item {
             color: view.accent
 
             Text {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 text: view.shelfCount > 9 ? "9+" : view.shelfCount
                 font.family: view.fontFamily

@@ -195,6 +195,7 @@ Item {
         height: 22
 
         Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             visible: mark.pid === "claude"
             text: "\ue001"
@@ -227,6 +228,7 @@ Item {
             color: Qt.rgba(cell.fg.r, cell.fg.g, cell.fg.b, 0.14)
 
             Text {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 text: mark.provider ? (mark.provider.name || mark.pid).substring(0, 1).toUpperCase() : ""
                 font.family: cell.fontFamily
@@ -296,6 +298,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 visible: cell.shown.length === 0
                 text: cell.errors.length ? "usage unavailable" : "no usage"
@@ -334,6 +337,7 @@ Item {
                             spacing: 3
 
                             Text {
+                                textFormat: Text.PlainText
                                 id: tagText
 
                                 anchors.baseline: number.baseline
@@ -345,6 +349,7 @@ Item {
                             }
 
                             Text {
+                                textFormat: Text.PlainText
                                 id: number
 
                                 anchors.verticalCenter: parent.verticalCenter

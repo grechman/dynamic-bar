@@ -146,6 +146,7 @@ Item {
     implicitHeight: column.implicitHeight
 
     component Label: Text {
+        textFormat: Text.PlainText
         font.family: root.fontFamily
         font.pixelSize: 12
         font.letterSpacing: 1.1
@@ -193,6 +194,7 @@ Item {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     x: 10
                     anchors.verticalCenter: parent.verticalCenter
                     text: "hold alerts"
@@ -202,6 +204,7 @@ Item {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     anchors.right: parent.right
                     anchors.rightMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
@@ -257,6 +260,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 x: 70
                 anchors.verticalCenter: parent.verticalCenter
                 text: "pin two to the bar, dim ones have no login"
@@ -294,6 +298,7 @@ Item {
                     }
 
                     Text {
+                        textFormat: Text.PlainText
                         x: 10
                         anchors.verticalCenter: parent.verticalCenter
                         width: parent.width - 96
@@ -323,6 +328,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             anchors.centerIn: parent
                             text: "pin"
                             font.family: root.fontFamily
@@ -402,6 +408,7 @@ Item {
             visible: height > 0
 
             Text {
+                textFormat: Text.PlainText
                 x: 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: "no providers found"
@@ -423,6 +430,7 @@ Item {
                 height: 31
 
                 Text {
+                    textFormat: Text.PlainText
                     x: 10
                     anchors.verticalCenter: parent.verticalCenter
                     width: 104
@@ -472,6 +480,7 @@ Item {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             anchors.fill: parent
                             verticalAlignment: Text.AlignVCenter
                             visible: !input.text.length && !input.activeFocus
@@ -497,6 +506,7 @@ Item {
             visible: height > 0
 
             Text {
+                textFormat: Text.PlainText
                 x: 10
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - 20
@@ -548,6 +558,7 @@ Item {
                     }
 
                     Text {
+                        textFormat: Text.PlainText
                         anchors.centerIn: parent
                         text: parent.modelData.label
                         font.family: root.fontFamily

@@ -2,6 +2,7 @@ import glob
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -95,9 +96,42 @@ def log(message):
         handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
 
 
-def read_json(path):
-    with open(path) as handle:
-        return json.load(handle)
+FILE_CAP = 1 << 20
+RESPONSE_CAP = 1 << 20
+
+
+def safe_open(path, cap=None, any_owner=False, binary=False):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError(f"not a regular file: {path}")
+        if not any_owner and info.st_uid != os.getuid():
+            raise OSError(f"not owned by us: {path}")
+        if cap is not None and info.st_size > cap:
+            raise OSError(f"too large: {path}")
+    except OSError:
+        os.close(fd)
+        raise
+    if binary:
+        return os.fdopen(fd, "rb")
+    return os.fdopen(fd, "r", encoding="utf-8", errors="replace")
+
+
+def read_text(path, cap=FILE_CAP, any_owner=False):
+    with safe_open(path, cap, any_owner) as handle:
+        return handle.read(cap + 1)
+
+
+def read_json(path, cap=FILE_CAP):
+    return json.loads(read_text(path, cap))
+
+
+def read_body(response, cap=RESPONSE_CAP):
+    raw = response.read(cap + 1)
+    if len(raw) > cap:
+        raise ValueError("response too large")
+    return raw
 
 
 def config():
@@ -139,7 +173,7 @@ def http_json(url, data=None, headers=None, method=None, timeout=15):
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            raw = response.read()
+            raw = read_body(response)
     except urllib.error.HTTPError as error:
         text = ""
         try:
@@ -451,8 +485,14 @@ def codex_sessions():
     )[:3]
     for path in files:
         last = None
-        with open(path, errors="ignore") as handle:
+        try:
+            handle = safe_open(path)
+        except OSError:
+            continue
+        with handle:
             for line in handle:
+                if len(line) > RESPONSE_CAP:
+                    continue
                 if '"rate_limits"' in line:
                     last = line
         if not last:
@@ -567,8 +607,7 @@ def gemini_client():
 
 def gemini_client_from(path):
     try:
-        with open(path, errors="ignore") as handle:
-            text = handle.read()
+        text = read_text(path, 32 << 20, any_owner=True)
     except OSError:
         return None
     cid = re.search(r"OAUTH_CLIENT_ID\s*=\s*['\"]([\w\-.]+)['\"]", text)
@@ -700,8 +739,7 @@ def fetch_kimi():
         "X-Msh-Platform": "kimi_code_cli",
     }
     try:
-        with open(f"{KIMI_HOME}/device_id") as handle:
-            headers["X-Msh-Device-Id"] = handle.read().strip()
+        headers["X-Msh-Device-Id"] = read_text(f"{KIMI_HOME}/device_id", 4096).strip()
     except OSError:
         pass
     d = http_json(KIMI_USAGE_URL, headers=headers)
@@ -755,8 +793,7 @@ def zai_credential():
             return os.environ[key].strip(), ZAI_CN
     for rel in ZAI_CN_FILES:
         try:
-            with open(f"{HOME}/{rel}") as handle:
-                token = handle.readline().strip()
+            token = read_text(f"{HOME}/{rel}", 4096).splitlines()[0].strip()
             if token:
                 return token, ZAI_CN
         except OSError:

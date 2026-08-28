@@ -151,6 +151,7 @@ Item {
         height: 104
 
         Text {
+            textFormat: Text.PlainText
             y: 6
             width: parent.width
             elide: Text.ElideRight
@@ -162,6 +163,7 @@ Item {
         }
 
         Text {
+            textFormat: Text.PlainText
             y: 24
             width: parent.width
             elide: Text.ElideRight
@@ -173,6 +175,7 @@ Item {
         }
 
         Text {
+            textFormat: Text.PlainText
             y: 46
             width: parent.width
             elide: Text.ElideRight
@@ -331,6 +334,7 @@ Item {
     }
 
     Text {
+        textFormat: Text.PlainText
         y: 144
         text: root.clock(root.elapsed)
         font.family: root.fontFamily
@@ -340,6 +344,7 @@ Item {
     }
 
     Text {
+        textFormat: Text.PlainText
         anchors.right: parent.right
         y: 144
         text: "-" + root.clock(root.span - root.elapsed)
@@ -375,6 +380,7 @@ Item {
         }
 
         Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: knob.glyph
             font.family: root.fontFamily

@@ -268,6 +268,7 @@ Item {
     }
 
     Text {
+        textFormat: Text.PlainText
         id: glyphA
         anchors.verticalCenter: parent.verticalCenter
         anchors.verticalCenterOffset: -3 * root.split
@@ -287,6 +288,7 @@ Item {
     }
 
     Text {
+        textFormat: Text.PlainText
         id: glyphB
         anchors.verticalCenter: parent.verticalCenter
         anchors.verticalCenterOffset: 3 * root.split

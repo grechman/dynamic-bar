@@ -12,6 +12,7 @@ import fcntl
 import signal
 import socket
 import shutil
+import stat
 import sqlite3
 import shlex
 import subprocess
@@ -199,10 +200,47 @@ def live_config():
     return CONFIG_CACHE["value"]
 
 
+FILE_CAP = 1 << 20
+RESPONSE_CAP = 1 << 20
+
+
+def safe_open(path, cap=None, any_owner=False, binary=False):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError(f"not a regular file: {path}")
+        if not any_owner and info.st_uid != os.getuid():
+            raise OSError(f"not owned by us: {path}")
+        if cap is not None and info.st_size > cap:
+            raise OSError(f"too large: {path}")
+    except OSError:
+        os.close(fd)
+        raise
+    if binary:
+        return os.fdopen(fd, "rb")
+    return os.fdopen(fd, "r", encoding="utf-8", errors="replace")
+
+
+def read_text(path, cap=FILE_CAP, any_owner=False):
+    with safe_open(path, cap, any_owner) as handle:
+        return handle.read(cap + 1)
+
+
+def read_json(path, cap=FILE_CAP):
+    return json.loads(read_text(path, cap))
+
+
+def read_body(response, cap=RESPONSE_CAP):
+    raw = response.read(cap + 1)
+    if len(raw) > cap:
+        raise ValueError("response too large")
+    return raw
+
+
 def load_config():
     try:
-        with open(CONFIG) as handle:
-            raw = json.load(handle)
+        raw = read_json(CONFIG)
     except (OSError, ValueError):
         raw = {}
     cfg = json.loads(json.dumps(DEFAULT))
@@ -300,8 +338,7 @@ def colors():
     if COLORS_CACHE["stamp"] == stamp and COLORS_CACHE["value"]:
         return COLORS_CACHE["value"]
     try:
-        with open(path) as handle:
-            text = handle.read()
+        text = read_text(path, 256 << 10, any_owner=True)
         palette = toml_palette(text) if path.endswith(".toml") else css_palette(text)
     except OSError:
         palette = dict(FALLBACK_PALETTE)
@@ -472,8 +509,7 @@ def cover_lookup(artist, album, title):
     memo = f"{ART_DIR}/cover-{key}.txt"
     try:
         age = time.time() - os.path.getmtime(memo)
-        with open(memo) as handle:
-            remembered = handle.read().strip()
+        remembered = read_text(memo, 8192).strip()
         if remembered and age < COVER_TTL:
             ripen(term, remembered)
             return remembered
@@ -493,7 +529,7 @@ def cover_lookup(artist, album, title):
 def fetch_json(url, timeout=5):
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
-            return json.load(response)
+            return json.loads(read_body(response, 512 << 10))
     except Exception:
         return None
 
@@ -578,8 +614,10 @@ def art_asset(url):
     image = f"{ART_DIR}/{key}.png"
     meta = f"{ART_DIR}/{key}.txt"
     if os.path.exists(image) and os.path.exists(meta):
-        with open(meta) as handle:
-            parts = handle.read().split()
+        try:
+            parts = read_text(meta, 4096).split()
+        except OSError:
+            parts = []
         tint = parts[0] if parts else ""
         edge = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
         return image, tint, edge
@@ -592,7 +630,7 @@ def art_asset(url):
     else:
         try:
             with urllib.request.urlopen(url, timeout=6) as response:
-                payload = response.read()
+                payload = read_body(response, 8 << 20)
         except Exception:
             return "", "", 0
         source = f"{ART_DIR}/{key}.{os.getpid()}.{threading.get_ident()}.src"
@@ -708,7 +746,7 @@ def shelf_thumb(path, stamp):
 
 def shelf_preview(path):
     try:
-        with open(path, encoding="utf-8", errors="replace") as handle:
+        with safe_open(path) as handle:
             return re.sub(r"\s+", " ", handle.read(400)).strip()[:180]
     except OSError:
         return ""
@@ -716,7 +754,7 @@ def shelf_preview(path):
 
 def shelf_text(path):
     try:
-        with open(path, encoding="utf-8", errors="replace") as handle:
+        with safe_open(path) as handle:
             return handle.read(4096)
     except OSError:
         return ""
@@ -891,10 +929,10 @@ def shelf_command(action, argument=""):
     elif action == "copy" and target and os.path.exists(target):
         kind = shelf_kind(target)
         if kind == "text":
-            with open(target) as handle:
+            with safe_open(target, SHELF_MAX_FETCH) as handle:
                 subprocess.run(["wl-copy"], input=handle.read(), text=True, check=False)
         elif kind == "image":
-            with open(target, "rb") as handle:
+            with safe_open(target, SHELF_MAX_FETCH, binary=True) as handle:
                 subprocess.run(
                     ["wl-copy", "--type", image_mime(target)],
                     input=handle.read(),
@@ -981,8 +1019,7 @@ LIKE_DIRTY = f"{STATE_DIR}/like-dirty"
 def yandex_token():
     for path in YANDEX_TOKEN_FILES:
         try:
-            with open(path) as handle:
-                return handle.read().strip()
+            return read_text(path, 4096).strip()
         except OSError:
             continue
     return ""
@@ -1003,7 +1040,7 @@ def yandex_call(path, data=None):
     )
     try:
         with urllib.request.urlopen(request, timeout=6) as response:
-            return json.load(response).get("result")
+            return json.loads(read_body(response, 8 << 20)).get("result")
     except Exception:
         return None
 
@@ -1124,8 +1161,7 @@ def playing_now():
     if state.get("title"):
         return state
     try:
-        with open(SCENE_FILE) as handle:
-            return json.load(handle).get("music") or {}
+        return read_json(SCENE_FILE, 4 << 20).get("music") or {}
     except (OSError, ValueError):
         return {}
 
@@ -1165,8 +1201,7 @@ def toggle_mute():
         return
     back = 1.0
     try:
-        with open(MUSIC_VOLUME) as handle:
-            back = max(0.05, float(handle.read().strip()))
+        back = max(0.05, float(read_text(MUSIC_VOLUME, 64).strip()))
     except (OSError, ValueError):
         pass
     run(["playerctl", "volume", f"{back:.3f}"], 3)
@@ -1185,8 +1220,7 @@ def music_control(action):
     if action == "prev":
         now = time.time()
         try:
-            with open(MUSIC_PREV) as handle:
-                last = float(handle.read().strip())
+            last = float(read_text(MUSIC_PREV, 64).strip())
         except (OSError, ValueError):
             last = 0.0
         os.makedirs(STATE_DIR, exist_ok=True)
@@ -1371,8 +1405,7 @@ def render_cat(color):
     os.makedirs(RUNCAT_DIR, exist_ok=True)
     for name in CAT_FRAMES:
         try:
-            with open(f"{RUNCAT_SRC}/{name}.svg") as handle:
-                svg = handle.read().replace("#bebebe", color)
+            svg = read_text(f"{RUNCAT_SRC}/{name}.svg", 256 << 10, any_owner=True).replace("#bebebe", color)
         except OSError:
             continue
         tmp = f"{RUNCAT_DIR}/{name}.svg.tmp"
@@ -1835,8 +1868,7 @@ class Island:
         if not out:
             return
         try:
-            with open(GH_SEEN) as handle:
-                seen = set(json.load(handle))
+            seen = set(read_json(GH_SEEN))
         except (OSError, ValueError):
             seen = set()
         try:
@@ -1912,8 +1944,7 @@ class Island:
         states = {}
         for path in glob.glob(f"{CLAUDE_SESSIONS}/*.json"):
             try:
-                with open(path) as session_file:
-                    session = json.load(session_file)
+                session = read_json(path, 64 << 10)
                 pid = int(session["pid"])
                 proc_start = str(session["procStart"])
             except (KeyError, OSError, TypeError, ValueError):
@@ -2166,8 +2197,7 @@ class Island:
             return {"count": 0, "items": [], "ask": ""}
         ask = ""
         try:
-            with open(SHELF_ASK) as handle:
-                ask = handle.read().strip()
+            ask = read_text(SHELF_ASK, 4096).strip()
         except OSError:
             pass
         if stamp == self.shelf_seen and ask == self.shelf_ask:
@@ -2413,8 +2443,7 @@ class Island:
     def external_producer(self):
         for path in sorted(glob.glob(f"{EVENTS_DIR}/*.json")):
             try:
-                with open(path) as handle:
-                    ev = json.load(handle)
+                ev = read_json(path, 64 << 10)
                 os.remove(path)
             except (OSError, ValueError):
                 continue
@@ -2459,8 +2488,7 @@ class Island:
         if not files:
             return None
         try:
-            with open(files[-1]) as handle:
-                t = json.load(handle)
+            t = read_json(files[-1], 64 << 10)
         except (OSError, ValueError):
             return None
         if not isinstance(t, dict):
@@ -2550,8 +2578,7 @@ class Island:
                 self.date_until = now + DATE_SECONDS
             if os.path.exists(BUBBLE_CLICK):
                 try:
-                    with open(BUBBLE_CLICK) as click:
-                        half = 1 if click.read().strip() == "1" else 0
+                    half = 1 if read_text(BUBBLE_CLICK, 16).strip() == "1" else 0
                 except OSError:
                     half = 0
                 os.remove(BUBBLE_CLICK)
@@ -2627,7 +2654,7 @@ def remote_pull_thread():
                 timeout=10,
                 check=False,
             )
-            if r.returncode != 0:
+            if r.returncode != 0 or len(r.stdout) > (8 << 20):
                 delay = min(delay * 2, 60.0)
                 continue
             delay = 3.0
@@ -2681,8 +2708,7 @@ def remote_pull_thread():
 
 def ntfy_thread():
     try:
-        with open(NTFY_TOPIC_FILE) as handle:
-            topic = handle.read().strip()
+        topic = read_text(NTFY_TOPIC_FILE, 4096).strip()
     except OSError:
         return
     if not topic:
@@ -2693,7 +2719,12 @@ def ntfy_thread():
                 f"https://ntfy.sh/{topic}/json", headers={"User-Agent": "island"}
             )
             with urllib.request.urlopen(req, timeout=300) as r:
-                for raw in r:
+                while True:
+                    raw = r.readline(65536)
+                    if not raw:
+                        break
+                    if len(raw) >= 65536:
+                        continue
                     try:
                         m = json.loads(raw)
                     except ValueError:
