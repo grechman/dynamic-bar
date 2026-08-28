@@ -43,6 +43,10 @@ Scope {
         function close(): void {
             root.openPanel("");
         }
+
+        function state(): string {
+            return root.usageOpen ? "usage" : root.systemOpen ? "system" : root.musicOpen ? "music" : root.shelfOpen ? root.islandPanel : "closed";
+        }
     }
 
     function openPanel(name) {
@@ -496,15 +500,19 @@ Scope {
                     }
                 }
 
+                Shortcut {
+                    sequence: "Escape"
+                    context: Qt.WindowShortcut
+                    enabled: root.shelfOpen
+                    onActivated: root.shelfOpen = false
+                }
+
                 Item {
                     anchors.fill: parent
                     focus: root.shelfOpen
 
                     Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Escape) {
-                            root.shelfOpen = false;
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
+                        if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
                             root.shelfAction("paste", "");
                             event.accepted = true;
                         }
