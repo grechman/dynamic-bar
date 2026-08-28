@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Island - a dynamic-island bar for Omarchy</title>
+<title>Dynamic Bar - a dynamic-island bar for Omarchy</title>
 <style>
   :root { --bg: #181616; --panel: #221f1f; --fg: #c5c9c5; --dim: #a6a69c; --accent: #658594; --ok: #87a987; --warn: #c4b28a; --crit: #c4746e; --claude: #d97757; }
   * { box-sizing: border-box; }
@@ -41,7 +41,7 @@
 
 <section>
   <div class="slide">
-    <h1>Island</h1>
+    <h1>Dynamic Bar</h1>
     <p class="lede">A top bar with a dynamic island: your coding agents, your AI limits, your music and your system in one quiet strip. Built for Omarchy, runs on any Hyprland.</p>
     <img class="strip" src="../preview.png" alt="the bar">
     <p style="margin-top:22px"><span class="tag">Omarchy bar plugin</span><span class="tag">Quickshell</span><span class="tag">GPL-3.0</span><span class="tag">no sudo, no install hooks</span></p>
@@ -120,8 +120,8 @@
       <div>
         <p>Click the island: every alert source is a switch, every limits provider is a switch with a <code>pin</code>, the remote host, the probe host and the font are text fields. The file behind it is <code>~/.config/island/island.json</code> if you prefer.</p>
         <pre>omarchy plugin add \
-  https://github.com/grechman/island.git --enable
-omarchy bar set   # pick io.github.grechman.island</pre>
+  https://github.com/grechman/dynamic-bar.git --enable
+omarchy bar set   # pick io.github.grechman.dynamic-bar</pre>
         <p class="muted">Standalone: clone into <code>~/.config/quickshell/island</code>, copy the two systemd units, add one <code>exec-once</code>.</p>
       </div>
     </div>
@@ -134,10 +134,10 @@ omarchy bar set   # pick io.github.grechman.island</pre>
     <p><strong>One scene.</strong> The bar is one Quickshell scene with one state file, so pills can morph into each other, widths animate at constant edge speed and nothing desyncs.</p>
     <p><strong>One daemon.</strong> A single Python process watches agents, players, batteries, hooks and the remote host and writes <code>scene.json</code>; the renderer only draws.</p>
     <p><strong>Honest about failure.</strong> Missing tools switch features off and are listed in settings; rate limits are respected; nothing is written outside <code>~/.cache/island</code> and <code>~/.config/island</code>.</p>
-    <p style="margin-top:28px"><a href="https://github.com/grechman/island" style="color:var(--fg)">github.com/grechman/island</a></p>
+    <p style="margin-top:28px"><a href="https://github.com/grechman/dynamic-bar" style="color:var(--fg)">github.com/grechman/dynamic-bar</a></p>
   </div>
 </section>
 
-<footer>Island · GPL-3.0-or-later · RunCat sprites from gnome-runcat</footer>
+<footer>Dynamic Bar · GPL-3.0-or-later · RunCat sprites from gnome-runcat</footer>
 </body>
 </html>

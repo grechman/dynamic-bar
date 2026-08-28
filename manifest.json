@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.grechman.island",
-  "name": "Island",
+  "id": "io.github.grechman.dynamic-bar",
+  "name": "Dynamic Bar",
   "version": "1.0.0",
   "author": "grechman",
   "license": "GPL-3.0-or-later",
-  "description": "Dynamic-island top bar: live pill for Claude Code and T3 Code agents, AI subscription limits, music with cover art, a drop shelf, and a wifi, bluetooth, audio and battery panel.",
+  "description": "Dynamic-island top bar for Omarchy: live pill for Claude Code and T3 Code agents, AI subscription limits, music with cover art, a drop shelf, and a wifi, bluetooth, audio and battery panel.",
   "kinds": ["bar"],
   "entryPoints": {
     "bar": "Bar.qml"

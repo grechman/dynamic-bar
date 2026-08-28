@@ -1,4 +1,4 @@
-# Island
+# Dynamic Bar
 
 A top bar for Hyprland built around a Dynamic-Island-style pill. Runs as an
 [Omarchy](https://omarchy.org) Quattro `bar` plugin or as a standalone
@@ -64,23 +64,23 @@ No sudo, no package installs, no install hooks.
 ## Install as an Omarchy plugin
 
 ```sh
-omarchy plugin add https://github.com/grechman/island.git --enable
+omarchy plugin add https://github.com/grechman/dynamic-bar.git --enable
 ```
 
 Then pick it as the bar: `omarchy bar set` or edit `~/.config/omarchy/shell.json`
-and set `"bar": { "id": "io.github.grechman.island" }`. The plugin starts its own
+and set `"bar": { "id": "io.github.grechman.dynamic-bar" }`. The plugin starts its own
 state daemon (`island.py`) inside the shell; nothing else needs to run. The
 bar is top-only; `omarchy bar position` is ignored. The `bar-off` toggle is
 respected.
 
-Remove with `omarchy plugin remove io.github.grechman.island`. State lives in
+Remove with `omarchy plugin remove io.github.grechman.dynamic-bar`. State lives in
 `~/.cache/island`, config in `~/.config/island`; delete them if you want a clean
 slate.
 
 ## Install standalone
 
 ```sh
-git clone https://github.com/grechman/island.git ~/.config/quickshell/island
+git clone https://github.com/grechman/dynamic-bar.git ~/.config/quickshell/island
 cp ~/.config/quickshell/island/systemd/*.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 ```
