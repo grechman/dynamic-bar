@@ -389,7 +389,7 @@ Scope {
                 color: "transparent"
                 exclusionMode: ExclusionMode.Ignore
                 WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.keyboardFocus: root.usageOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+                WlrLayershell.keyboardFocus: root.usageOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
                 Shortcut {
                     sequence: "Escape"
@@ -455,7 +455,7 @@ Scope {
                 color: "transparent"
                 exclusionMode: ExclusionMode.Ignore
                 WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.keyboardFocus: root.shelfOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+                WlrLayershell.keyboardFocus: root.shelfOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
                 property bool dragHold: false
 
@@ -561,7 +561,7 @@ Scope {
                 color: "transparent"
                 exclusionMode: ExclusionMode.Ignore
                 WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.keyboardFocus: root.systemOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+                WlrLayershell.keyboardFocus: root.systemOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
                 HyprlandFocusGrab {
                     id: systemGrab
@@ -614,7 +614,7 @@ Scope {
                 color: "transparent"
                 exclusionMode: ExclusionMode.Ignore
                 WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.keyboardFocus: root.musicOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+                WlrLayershell.keyboardFocus: root.musicOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
                 Shortcut {
                     sequence: "Escape"
