@@ -1,0 +1,13 @@
+[Unit]
+Description=Island state producer
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.config/quickshell/island/island.py
+Restart=always
+RestartSec=2
+Slice=app.slice
+
+[Install]
+WantedBy=default.target

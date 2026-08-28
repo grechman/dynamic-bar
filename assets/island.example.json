@@ -1,0 +1,27 @@
+{
+  "sound": true,
+  "seconds": 3.0,
+  "font": "",
+  "remote": "",
+  "probe_host": "",
+  "usage": {
+    "providers": [],
+    "pinned": []
+  },
+  "producers": {
+    "charging": true,
+    "low": true,
+    "critical": true,
+    "external": true,
+    "wifi": true,
+    "tailnet": false,
+    "ram": true,
+    "bluetooth": true,
+    "battery_full": true,
+    "github": true,
+    "t3": true,
+    "claude": true,
+    "telegram": true,
+    "music": true
+  }
+}

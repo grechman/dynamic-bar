@@ -1,0 +1,362 @@
+import importlib.util
+import json
+import os
+import tempfile
+import time
+import unittest
+from unittest import mock
+
+ROOT = tempfile.mkdtemp(prefix="island-usage-")
+os.environ["ISLAND_DIR"] = ROOT
+os.environ["ISLAND_CONFIG"] = f"{ROOT}/island.json"
+os.environ["XDG_STATE_HOME"] = f"{ROOT}/state"
+SPEC = importlib.util.spec_from_file_location(
+    "usage",
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "usage.py"
+    ),
+)
+usage = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(usage)
+
+
+def fake_http(responses):
+    def call(url, data=None, headers=None, method=None, timeout=15):
+        for needle, payload in responses:
+            if needle in url:
+                if isinstance(payload, Exception):
+                    raise payload
+                return payload
+        raise AssertionError(f"unexpected url {url}")
+
+    return call
+
+
+class Parsers(unittest.TestCase):
+    def test_claude_windows_and_plan(self):
+        creds = {
+            "claudeAiOauth": {
+                "accessToken": "t",
+                "expiresAt": (time.time() + 3600) * 1000,
+                "rateLimitTier": "default_claude_max_20x",
+            }
+        }
+        payload = {
+            "five_hour": {"utilization": 31.0, "resets_at": "2026-08-28T20:00:00Z"},
+            "seven_day": {"utilization": 73.0, "resets_at": "2026-08-31T10:00:00Z"},
+            "limits": [
+                {
+                    "kind": "weekly_scoped",
+                    "percent": 70,
+                    "resets_at": "2026-08-31T10:00:00Z",
+                    "scope": {"model": {"display_name": "Fable"}},
+                }
+            ],
+        }
+        with (
+            mock.patch.object(usage, "read_json", return_value=creds),
+            mock.patch.object(
+                usage, "http_json", fake_http([("oauth/usage", payload)])
+            ),
+        ):
+            out = usage.fetch_claude()
+        self.assertEqual(out["plan"], "Max 20x")
+        self.assertEqual(
+            [(w["tag"], w["pct"]) for w in out["windows"]],
+            [("5h", 31), ("wk", 73), ("fb", 70)],
+        )
+        self.assertAlmostEqual(out["windows"][0]["reset"], 1787947200, delta=1)
+
+    def test_claude_expired_login_skips_without_network(self):
+        creds = {
+            "claudeAiOauth": {
+                "accessToken": "t",
+                "expiresAt": (time.time() - 10) * 1000,
+            }
+        }
+        with (
+            mock.patch.object(usage, "read_json", return_value=creds),
+            mock.patch.object(
+                usage, "http_json", side_effect=AssertionError("no network")
+            ),
+        ):
+            with self.assertRaises(usage.Skip):
+                usage.fetch_claude()
+
+    def test_gemini_groups_buckets(self):
+        payload = {
+            "buckets": [
+                {
+                    "modelId": "gemini-2.5-pro",
+                    "remainingFraction": 0.4,
+                    "resetTime": "2026-08-29T00:00:00Z",
+                },
+                {
+                    "modelId": "gemini-2.5-pro-preview",
+                    "remainingFraction": 0.9,
+                    "resetTime": "2026-08-29T00:00:00Z",
+                },
+                {
+                    "modelId": "gemini-2.5-flash",
+                    "remainingFraction": 0.75,
+                    "resetTime": "2026-08-29T00:00:00Z",
+                },
+            ]
+        }
+        with (
+            mock.patch.object(usage, "gemini_token", return_value="tok"),
+            mock.patch.object(
+                usage,
+                "http_json",
+                fake_http(
+                    [
+                        (
+                            "loadCodeAssist",
+                            {
+                                "cloudaicompanionProject": "p",
+                                "currentTier": {"id": "standard-tier"},
+                            },
+                        ),
+                        ("retrieveUserQuota", payload),
+                    ]
+                ),
+            ),
+        ):
+            out = usage.fetch_gemini()
+        self.assertEqual(
+            [(w["tag"], w["pct"]) for w in out["windows"]], [("pro", 60), ("fl", 25)]
+        )
+        self.assertEqual(out["plan"], "standard-tier")
+
+    def test_kimi_windows(self):
+        payload = {
+            "usage": {
+                "limit": "1000",
+                "used": "250",
+                "resetTime": "2026-09-01T00:00:00Z",
+            },
+            "limits": [
+                {
+                    "window": {"duration": 5, "timeUnit": "TIME_UNIT_HOUR"},
+                    "detail": {
+                        "limit": "200",
+                        "remaining": "50",
+                        "resetTime": "2026-08-28T22:00:00Z",
+                    },
+                }
+            ],
+        }
+        with (
+            mock.patch.object(usage, "kimi_token", return_value="tok"),
+            mock.patch.object(usage, "http_json", fake_http([("usages", payload)])),
+        ):
+            out = usage.fetch_kimi()
+        self.assertEqual(
+            [(w["tag"], w["pct"]) for w in out["windows"]], [("5h", 75), ("wk", 25)]
+        )
+
+    def test_zai_limits(self):
+        payload = {
+            "data": {
+                "planName": "Pro",
+                "limits": [
+                    {
+                        "type": "TOKENS_LIMIT",
+                        "unit": "HOUR",
+                        "number": 5,
+                        "percentage": 42,
+                        "nextResetTime": 1788300000000,
+                    },
+                    {
+                        "type": "TOKENS_LIMIT",
+                        "unit": "DAY",
+                        "number": 7,
+                        "usage": 300,
+                        "total": 1000,
+                        "nextResetTime": 1788600000000,
+                    },
+                    {"type": "TIME_LIMIT", "percentage": 5},
+                ],
+            }
+        }
+        with (
+            mock.patch.object(
+                usage, "zai_credential", return_value=("k", usage.ZAI_GLOBAL)
+            ),
+            mock.patch.object(
+                usage, "http_json", fake_http([("quota/limit", payload)])
+            ),
+        ):
+            out = usage.fetch_zai()
+        self.assertEqual(out["plan"], "Pro")
+        self.assertEqual(
+            [(w["tag"], w["pct"]) for w in out["windows"]],
+            [("5h", 42), ("wk", 30), ("mcp", 5)],
+        )
+        self.assertEqual(out["windows"][0]["reset"], 1788300000)
+
+    def test_grok_percent_or_ratio(self):
+        payload = {
+            "config": {
+                "onDemandCap": {"val": 200},
+                "onDemandUsed": {"val": 50},
+                "currentPeriod": {"end": "2026-09-05T00:00:00Z"},
+                "subscriptionTier": "SUPER_GROK",
+            }
+        }
+        with (
+            mock.patch.object(usage, "grok_credential", return_value="tok"),
+            mock.patch.object(
+                usage,
+                "http_json",
+                fake_http(
+                    [
+                        ("billing", payload),
+                        ("settings", {"subscription_tier_display": "SuperGrok"}),
+                    ]
+                ),
+            ),
+        ):
+            out = usage.fetch_grok()
+        self.assertEqual(out["windows"][0]["pct"], 25)
+        self.assertEqual(out["plan"], "SuperGrok")
+
+    def test_copilot_quota(self):
+        payload = {
+            "copilot_plan": "individual",
+            "quota_reset_date": "2026-09-01",
+            "quota_snapshots": {
+                "premium_interactions": {"percent_remaining": 12.5, "unlimited": False},
+                "chat": {"unlimited": True},
+            },
+        }
+        with (
+            mock.patch.object(usage, "copilot_token", return_value="tok"),
+            mock.patch.object(
+                usage, "http_json", fake_http([("copilot_internal", payload)])
+            ),
+        ):
+            out = usage.fetch_copilot()
+        self.assertEqual([(w["tag"], w["pct"]) for w in out["windows"]], [("pr", 88)])
+        self.assertEqual(out["plan"], "individual")
+
+    def test_minimax_remains_anywhere(self):
+        payload = {
+            "data": {
+                "model_remains": [
+                    {
+                        "model_name": "M2",
+                        "current_interval_remaining_percent": 80.0,
+                        "end_time": 1788300000000,
+                        "current_weekly_remaining_percent": 55.5,
+                        "weekly_end_time": 1788600000000,
+                    }
+                ]
+            }
+        }
+        with (
+            mock.patch.dict(os.environ, {"MINIMAX_API_KEY": "k"}),
+            mock.patch.object(usage, "http_json", fake_http([("remains", payload)])),
+        ):
+            out = usage.fetch_minimax()
+        self.assertEqual(
+            [(w["tag"], w["pct"]) for w in out["windows"]], [("5h", 20), ("wk", 44)]
+        )
+
+    def test_omarchy_records_are_ingested(self):
+        directory = f"{ROOT}/state/omarchy/agents/usage"
+        os.makedirs(directory, exist_ok=True)
+        record = {
+            "id": "fireworks",
+            "name": "Fireworks",
+            "tierLabel": "Prepaid",
+            "updatedAt": "2026-08-28T10:00:00+00:00",
+            "limits": [
+                {
+                    "label": "Weekly (7-day)",
+                    "percent": 0.4,
+                    "resetsAt": "2026-09-01T00:00:00+00:00",
+                }
+            ],
+        }
+        with open(f"{directory}/fireworks.json", "w") as handle:
+            json.dump(record, handle)
+        out = usage.omarchy_records({"claude"})
+        self.assertEqual(out[0]["id"], "fireworks")
+        self.assertEqual(
+            [(w["tag"], w["pct"]) for w in out[0]["windows"]], [("wk", 40)]
+        )
+        self.assertEqual(usage.omarchy_records({"fireworks"}), [])
+
+
+class Collect(unittest.TestCase):
+    def setUp(self):
+        for name in ("usage.json", "usage.log"):
+            try:
+                os.remove(f"{ROOT}/{name}")
+            except OSError:
+                pass
+
+    def test_rate_limit_honours_retry_after_and_keeps_windows(self):
+        first = {
+            "plan": "Max",
+            "windows": [
+                usage.window("claude:5h", "5h", "claude 5h", 40, time.time() + 3600)
+            ],
+        }
+        calls = []
+
+        def fetch(entry):
+            calls.append(1)
+            if len(calls) == 1:
+                return first
+            raise usage.HttpError(429, retry_after=900, body="slow down")
+
+        fake = [("claude", "Claude", lambda: True, fetch)]
+        with mock.patch.object(usage, "PROVIDERS", fake):
+            usage.collect()
+            usage.collect(force=True)
+            payload = usage.collect()
+        provider = payload["providers"][0]
+        self.assertEqual(provider["windows"][0]["pct"], 40)
+        self.assertIn("HTTP 429", provider["error"])
+        self.assertIn("retry in 15 min", provider["error"])
+        self.assertEqual(len(calls), 2)
+
+    def test_expired_windows_are_dropped(self):
+        old = {
+            "plan": "",
+            "windows": [
+                usage.window("codex:5h", "5h", "codex 5h", 90, time.time() - 600),
+                usage.window("codex:wk", "wk", "codex weekly", 10, time.time() + 600),
+            ],
+        }
+        fake = [("codex", "Codex", lambda: True, lambda entry: old)]
+        with mock.patch.object(usage, "PROVIDERS", fake):
+            payload = usage.collect()
+        self.assertEqual([w["tag"] for w in payload["providers"][0]["windows"]], ["wk"])
+
+    def test_reset_event_posted_when_window_rolls(self):
+        stamps = [time.time() + 100, time.time() + 90000]
+        results = [
+            {
+                "plan": "",
+                "windows": [
+                    usage.window("claude:5h", "5h", "claude 5h", 60, stamps[0])
+                ],
+            },
+            {
+                "plan": "",
+                "windows": [usage.window("claude:5h", "5h", "claude 5h", 2, stamps[1])],
+            },
+        ]
+        fake = [("claude", "Claude", lambda: True, lambda entry: results.pop(0))]
+        with mock.patch.object(usage, "PROVIDERS", fake):
+            usage.collect()
+            usage.collect(force=True)
+        events = os.listdir(f"{ROOT}/events")
+        self.assertEqual(events, ["reset-claude-5h.json"])
+
+
+if __name__ == "__main__":
+    unittest.main()

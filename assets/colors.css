@@ -1,0 +1,15 @@
+/* kanagawa dragon */
+@define-color bg        #181616;
+@define-color bg_alt    #282727;
+@define-color fg        #c5c9c5;
+@define-color fg_muted  #625e5a;
+@define-color fg_alt    #a6a69c;
+@define-color accent    #658594;
+@define-color hover     #a292a3;
+@define-color ok        #87a987;
+@define-color warn      #c4b28a;
+@define-color critical  #c4746e;
+@define-color info      #8ea4a2;
+@define-color info_alt  #949fb5;
+@define-color cpu_color #b6927b;
+@define-color mem_color #8992a7;

@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+import json
+import os
+import sys
+import time
+
+STATE = os.environ.get("ISLAND_DIR", os.path.expanduser("~/.cache/island"))
+TASKS = f"{STATE}/tasks"
+EVENTS = f"{STATE}/events"
+USAGE = """island-task start <id> [text] [--icon G] [--dot ok|warn|crit]
+island-task progress <id> <157/400 | text>
+island-task eta <id> <42m | 8s | ->
+island-task dot <id> <ok|warn|crit>
+island-task done <id> [final text]
+island-task fail <id> [final text]
+island-task list"""
+
+
+def path(tid):
+    return f"{TASKS}/{tid}.json"
+
+
+def load(tid):
+    try:
+        return json.load(open(path(tid)))
+    except (OSError, ValueError):
+        return {}
+
+
+def save(tid, t):
+    os.makedirs(TASKS, exist_ok=True)
+    tmp = path(tid) + ".tmp"
+    json.dump(t, open(tmp, "w"))
+    os.replace(tmp, path(tid))
+    os.utime(path(tid))
+
+
+def finish(tid, text, sev):
+    t = load(tid)
+    if not text:
+        word = "<b>done</b>" if sev == "good" else "<b>failed</b>"
+        head = " ".join(x for x in [t.get("text") or tid, t.get("progress") or ""] if x)
+        text = f"{head}  {word}"
+    try:
+        os.remove(path(tid))
+    except OSError:
+        pass
+    os.makedirs(EVENTS, exist_ok=True)
+    ev = {"id": f"task-{tid}", "icon": t.get("icon") or "\U000f05e0", "text": text, "severity": sev, "ttl": 6, "kind": "done", "sound": "message" if sev == "good" else "warning"}
+    json.dump(ev, open(f"{EVENTS}/task-{tid}-{int(time.time())}.json", "w"))
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(USAGE)
+        return
+    cmd = args[0]
+    if cmd == "list":
+        for f in sorted(os.listdir(TASKS)) if os.path.isdir(TASKS) else []:
+            if f.endswith(".json"):
+                print(f[:-5], json.dumps(json.load(open(f"{TASKS}/{f}"))))
+        return
+    if len(args) < 2:
+        sys.exit(USAGE)
+    tid = args[1]
+    rest = args[2:]
+    if cmd == "start":
+        t = {"text": tid, "dot": "ok"}
+        words = []
+        i = 0
+        while i < len(rest):
+            if rest[i] == "--icon" and i + 1 < len(rest):
+                t["icon"] = rest[i + 1]
+                i += 2
+            elif rest[i] == "--dot" and i + 1 < len(rest):
+                t["dot"] = rest[i + 1]
+                i += 2
+            else:
+                words.append(rest[i])
+                i += 1
+        if words:
+            t["text"] = " ".join(words)
+        save(tid, t)
+    elif cmd == "progress":
+        t = load(tid)
+        t["progress"] = " ".join(rest)
+        save(tid, t)
+    elif cmd == "eta":
+        t = load(tid)
+        t["eta"] = " ".join(rest)
+        save(tid, t)
+    elif cmd == "dot":
+        t = load(tid)
+        t["dot"] = rest[0] if rest else "ok"
+        save(tid, t)
+    elif cmd == "done":
+        finish(tid, " ".join(rest), "good")
+    elif cmd == "fail":
+        finish(tid, " ".join(rest), "bad")
+    else:
+        sys.exit(USAGE)
+
+
+if __name__ == "__main__":
+    main()

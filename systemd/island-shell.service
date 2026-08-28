@@ -1,0 +1,14 @@
+[Unit]
+Description=Island quickshell bar
+Wants=island-state.service
+After=island-state.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/qs -c island
+Restart=always
+RestartSec=2
+Slice=app.slice
+
+[Install]
+WantedBy=default.target

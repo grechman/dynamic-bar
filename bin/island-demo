@@ -1,0 +1,93 @@
+#!/bin/sh
+set -e
+
+CACHE=${ISLAND_DIR:-$HOME/.cache/island}
+HOOK=$(dirname "$(dirname "$(readlink -f "$0")")")/hooks/action-state.py
+WORK=$(mktemp -d /tmp/island-demo.XXXXXX)
+FIFO=$WORK/fifo
+
+cleanup() {
+  [ -p "$FIFO" ] && echo quit > "$FIFO" 2>/dev/null || true
+  sleep 0.5
+  rm -rf "$WORK"
+  rm -f "$CACHE/claude/demo-session.json" "$CACHE/tasks/demo-bench.json" "$CACHE/events/demo.json"
+}
+trap cleanup EXIT INT TERM
+
+cat > "$WORK/claude" <<'AGENT'
+#!/bin/sh
+fifo=$1; sid=$2; hook=$3
+[ -p "$fifo" ] || mkfifo "$fifo"
+while true; do
+  read -r line < "$fifo" || continue
+  [ "$line" = quit ] && exit 0
+  event=${line%%:*}; kind=${line#*:}; [ "$kind" = "$line" ] && kind=""
+  printf '{"hook_event_name":"%s","session_id":"%s","notification_type":"%s","cwd":"/tmp"}' \
+    "$event" "$sid" "$kind" | python3 "$hook"
+done
+AGENT
+chmod +x "$WORK/claude"
+
+say() { printf '\n>> %s\n' "$1"; }
+fire() { echo "$1" > "$FIFO"; }
+click() { touch "$CACHE/bubble-click"; }
+telegram() {
+  gdbus call --session --dest org.freedesktop.Notifications \
+    --object-path /org/freedesktop/Notifications \
+    --method org.freedesktop.Notifications.Notify \
+    "Telegram Desktop" 0 "" "$1" "message body is never shown" "[]" "{}" 2500 >/dev/null
+}
+
+say "a second agent starts: it peeks into the pill, then waits as a bubble"
+setsid "$WORK/claude" "$FIFO" demo-session "$HOOK" >/dev/null 2>&1 &
+sleep 1
+fire UserPromptSubmit
+sleep 6
+
+say "click the bubble: the two agents swap places"
+click
+sleep 5
+
+say "the agent asks for permission: the bubble turns red"
+fire PermissionRequest
+sleep 5
+
+say "click the red bubble: the question plays in the pill and returns"
+click
+sleep 7
+
+say "permission granted"
+fire PostToolUse
+sleep 4
+
+say "the agent finishes: a green bubble waits"
+fire Stop
+sleep 5
+
+say "click the green bubble: it is swallowed by a green done"
+click
+sleep 7
+
+say "telegram: one sender, then the same sender again, then another"
+telegram "Bob"
+sleep 2
+telegram "Bob"
+sleep 2
+telegram "Anna Maria Lopez"
+sleep 6
+
+say "a critical alert pulses red"
+mkdir -p "$CACHE/events"
+printf '%s' '{"id":"demo","icon":"","text":"battery 4%","severity":"crit","ttl":4}' > "$CACHE/events/demo.json"
+sleep 8
+
+say "a bench task takes over the island, agents move to the bubble"
+mkdir -p "$CACHE/tasks"
+printf '%s' '{"icon":"","text":"bench sweep","progress":"3/8","eta":"4m","dot":"ok"}' > "$CACHE/tasks/demo-bench.json"
+sleep 6
+printf '%s' '{"icon":"","text":"bench sweep","progress":"7/8","eta":"1m","dot":"ok"}' > "$CACHE/tasks/demo-bench.json"
+sleep 5
+rm -f "$CACHE/tasks/demo-bench.json"
+sleep 5
+
+say "done"

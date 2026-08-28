@@ -1,0 +1,3 @@
+#!/bin/sh
+systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE
+systemctl --user start island-state.service island-shell.service
