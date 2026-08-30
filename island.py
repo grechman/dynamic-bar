@@ -36,7 +36,18 @@ BUNDLED_COLORS = f"{PLUGIN_DIR}/assets/colors.css"
 RUNCAT_SRC = f"{PLUGIN_DIR}/assets/runcat"
 RUNCAT_DIR = f"{STATE_DIR}/runcat"
 LOCK_FILE = f"{STATE_DIR}/daemon.lock"
-TOOLS = ("playerctl", "ffmpeg", "ffprobe", "gh", "nmcli", "bluetoothctl", "busctl", "wl-paste", "wl-copy", "ssh")
+TOOLS = (
+    "playerctl",
+    "ffmpeg",
+    "ffprobe",
+    "gh",
+    "nmcli",
+    "bluetoothctl",
+    "busctl",
+    "wl-paste",
+    "wl-copy",
+    "ssh",
+)
 EVENTS_DIR = f"{STATE_DIR}/events"
 TASKS_DIR = f"{STATE_DIR}/tasks"
 DATE_FLAG = f"{STATE_DIR}/showdate"
@@ -84,6 +95,8 @@ def probe_target():
     if not host or not port.isdigit():
         return (raw, 22)
     return (host, int(port))
+
+
 TELEGRAM_BLUE = "#229ED9"
 CLAUDE_ORANGE = "#D97757"
 TELEGRAM_MESSAGES = queue.SimpleQueue()
@@ -275,13 +288,15 @@ FALLBACK_PALETTE = {
 
 def hex_rgb(value):
     value = value.lstrip("#")
-    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+    return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
 
 
 def mix_hex(base, tint, amount):
     a = hex_rgb(base)
     b = hex_rgb(tint)
-    return "#%02x%02x%02x" % tuple(round(a[i] + (b[i] - a[i]) * amount) for i in range(3))
+    return "#%02x%02x%02x" % tuple(
+        round(a[i] + (b[i] - a[i]) * amount) for i in range(3)
+    )
 
 
 def palette_source():
@@ -298,9 +313,16 @@ def css_palette(text):
     found = dict(re.findall(r"@define-color\s+(\w+)\s+(#[0-9a-fA-F]{6})", text))
     palette = dict(FALLBACK_PALETTE)
     for key, source in (
-        ("bg", "bg"), ("bg_alt", "bg_alt"), ("fg", "fg"), ("fg_alt", "fg_alt"),
-        ("muted", "fg_muted"), ("accent", "accent"), ("hover", "hover"),
-        ("ok", "ok"), ("warn", "warn"), ("crit", "critical"),
+        ("bg", "bg"),
+        ("bg_alt", "bg_alt"),
+        ("fg", "fg"),
+        ("fg_alt", "fg_alt"),
+        ("muted", "fg_muted"),
+        ("accent", "accent"),
+        ("hover", "hover"),
+        ("ok", "ok"),
+        ("warn", "warn"),
+        ("crit", "critical"),
     ):
         if source in found:
             palette[key] = found[source]
@@ -395,13 +417,25 @@ def claude_session_activity(session):
 
 def raw_pixels(path, size=48):
     result = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", path, "-vf", f"scale={size}:{size}",
-         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-i",
+            path,
+            "-vf",
+            f"scale={size}:{size}",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ],
         capture_output=True,
         check=False,
     )
     data = result.stdout
-    return [tuple(data[i:i + 3]) for i in range(0, len(data) - 2, 3)]
+    return [tuple(data[i : i + 3]) for i in range(0, len(data) - 2, 3)]
 
 
 def as_hex(rgb):
@@ -446,9 +480,7 @@ def accent_of(path):
     )
     share = count / len(pixels)
     weight = min(1.0, max(0.0, (share - 0.01) / 0.035))
-    return as_hex(
-        tuple(plain[i] + (vivid[i] - plain[i]) * weight for i in range(3))
-    )
+    return as_hex(tuple(plain[i] + (vivid[i] - plain[i]) * weight for i in range(3)))
 
 
 COVER_TTL = 14 * 86400
@@ -558,9 +590,7 @@ def itunes_cover(query):
 
 
 def archive_cover(query):
-    params = urllib.parse.urlencode(
-        {"query": query, "fmt": "json", "limit": 1}
-    )
+    params = urllib.parse.urlencode({"query": query, "fmt": "json", "limit": 1})
     data = fetch_json(f"https://musicbrainz.org/ws/2/release/?{params}")
     if data is None:
         raise LookupError("musicbrainz unreachable")
@@ -733,8 +763,17 @@ def shelf_thumb(path, stamp):
         return ""
     os.makedirs(SHELF_THUMBS, exist_ok=True)
     result = subprocess.run(
-        ["ffmpeg", "-v", "error", "-y", "-i", path, "-vf",
-         "scale=128:128:force_original_aspect_ratio=increase,crop=128:128", thumb],
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            path,
+            "-vf",
+            "scale=128:128:force_original_aspect_ratio=increase,crop=128:128",
+            thumb,
+        ],
         capture_output=True,
         check=False,
     )
@@ -896,10 +935,18 @@ def shelf_command(action, argument=""):
                 shutil.copy2(source, shelf_unique(os.path.basename(source)))
     elif action == "portal" and argument.strip():
         reply = run(
-            ["busctl", "--user", "call", "org.freedesktop.portal.Documents",
-             "/org/freedesktop/portal/documents",
-             "org.freedesktop.portal.FileTransfer", "RetrieveFiles", "sa{sv}",
-             argument.strip(), "0"],
+            [
+                "busctl",
+                "--user",
+                "call",
+                "org.freedesktop.portal.Documents",
+                "/org/freedesktop/portal/documents",
+                "org.freedesktop.portal.FileTransfer",
+                "RetrieveFiles",
+                "sa{sv}",
+                argument.strip(),
+                "0",
+            ],
             timeout=8,
         )
         for source in re.findall(r'"([^"]+)"', reply):
@@ -939,8 +986,12 @@ def shelf_command(action, argument=""):
                     check=False,
                 )
         else:
-            subprocess.run(["wl-copy", "--type", "text/uri-list"],
-                           input=f"file://{target}\n", text=True, check=False)
+            subprocess.run(
+                ["wl-copy", "--type", "text/uri-list"],
+                input=f"file://{target}\n",
+                text=True,
+                check=False,
+            )
     elif action == "open" and target and os.path.exists(target):
         subprocess.Popen(["xdg-open", target], start_new_session=True)
     elif action == "rename" and argument:
@@ -964,9 +1015,17 @@ def player_pid(name):
     if not name:
         return ""
     result = subprocess.run(
-        ["busctl", "--user", "call", "org.freedesktop.DBus", "/org/freedesktop/DBus",
-         "org.freedesktop.DBus", "GetConnectionUnixProcessID", "s",
-         f"org.mpris.MediaPlayer2.{name}"],
+        [
+            "busctl",
+            "--user",
+            "call",
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "GetConnectionUnixProcessID",
+            "s",
+            f"org.mpris.MediaPlayer2.{name}",
+        ],
         capture_output=True,
         text=True,
         check=False,
@@ -988,30 +1047,68 @@ def playing_page(url):
     return parts.path.startswith(YOUTUBE_LIVE)
 
 
-def player_name():
+def player_name(state=None):
     result = subprocess.run(
-        ["playerctl", "-l"], capture_output=True, text=True, check=False
+        [
+            "playerctl",
+            "--all-players",
+            "metadata",
+            "--format",
+            "{{playerInstance}}\t{{status}}\t{{artist}}\t{{title}}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    return names[0] if names else ""
+    wanted_artist = str((state or {}).get("artist") or "")
+    wanted_title = str((state or {}).get("title") or "")
+    first = ""
+    playing = ""
+    for line in result.stdout.splitlines():
+        parts = line.split("\t", 3)
+        if len(parts) != 4:
+            continue
+        name, status, artist, title = parts
+        first = first or name
+        if status == "Playing" and not playing:
+            playing = name
+        if wanted_title and title == wanted_title and artist == wanted_artist:
+            return name
+    return playing or first
 
 
-def focus_player():
-    pid = player_pid(player_name())
+def player_command(player, *args):
+    command = ["playerctl"]
+    if player:
+        command += ["--player", player]
+    return command + list(args)
+
+
+def focus_player(player=""):
+    pid = player_pid(player)
     if not pid:
         return
     subprocess.run(
-        ["hyprctl", "eval",
-         'hl.dispatch(hl.dsp.focus({window="pid:' + pid + '"}))'],
+        ["hyprctl", "eval", 'hl.dispatch(hl.dsp.focus({window="pid:' + pid + '"}))'],
         capture_output=True,
         check=False,
     )
 
 
-YANDEX_TOKEN_FILES = (f"{CONFIG_DIR}/yandex-token", f"{HOME}/.local/share/island/yandex-token")
+YANDEX_TOKEN_FILES = (
+    f"{CONFIG_DIR}/yandex-token",
+    f"{HOME}/.local/share/island/yandex-token",
+)
 YANDEX_API = "https://api.music.yandex.net"
 YANDEX_AGENT = "Yandex-Music-API"
-YANDEX_CACHE = {"uid": None, "liked": set(), "at": 0.0, "ids": {}, "covers": {}, "albums": {}}
+YANDEX_CACHE = {
+    "uid": None,
+    "liked": set(),
+    "at": 0.0,
+    "ids": {},
+    "covers": {},
+    "albums": {},
+}
 YANDEX_TTL = 600.0
 LIKE_DIRTY = f"{STATE_DIR}/like-dirty"
 
@@ -1184,38 +1281,40 @@ def toggle_liked():
     open(LIKE_DIRTY, "w").close()
 
 
-def player_volume():
-    raw = run(["playerctl", "volume"], 3).strip()
+def player_volume(player=""):
+    raw = run(player_command(player, "volume"), 3).strip()
     try:
         return float(raw)
     except ValueError:
         return 1.0
 
 
-def toggle_mute():
-    now = player_volume()
+def toggle_mute(player=""):
+    now = player_volume(player)
     if now > 0.001:
         with open(MUSIC_VOLUME, "w") as handle:
             handle.write(f"{now:.3f}")
-        run(["playerctl", "volume", "0"], 3)
+        run(player_command(player, "volume", "0"), 3)
         return
     back = 1.0
     try:
         back = max(0.05, float(read_text(MUSIC_VOLUME, 64).strip()))
     except (OSError, ValueError):
         pass
-    run(["playerctl", "volume", f"{back:.3f}"], 3)
+    run(player_command(player, "volume", f"{back:.3f}"), 3)
 
 
 def music_control(action):
+    state = playing_now()
+    player = str(state.get("player") or "") or player_name(state)
     if action == "mute":
-        toggle_mute()
+        toggle_mute(player)
         return
     if action == "like":
         toggle_liked()
         return
     if action == "focus":
-        focus_player()
+        focus_player(player)
         return
     if action == "prev":
         now = time.time()
@@ -1227,14 +1326,15 @@ def music_control(action):
         with open(MUSIC_PREV, "w") as handle:
             handle.write(str(now))
         if now - last <= MUSIC_RESTART:
-            run(["playerctl", "previous"])
+            run(player_command(player, "previous"))
         else:
-            run(["playerctl", "position", "0"])
+            run(player_command(player, "position", "0"))
         return
     if action.startswith("seek:"):
-        run(["playerctl", "position", action[5:]])
+        run(player_command(player, "position", action[5:]))
         return
-    run(["playerctl", {"next": "next", "toggle": "play-pause"}.get(action, "play-pause")])
+    command = {"next": "next", "toggle": "play-pause"}.get(action, "play-pause")
+    run(player_command(player, command))
 
 
 def music_thread():
@@ -1249,12 +1349,19 @@ def music_thread():
             "{{xesam:url}}",
             "{{position}}",
             "{{mpris:length}}",
+            "{{playerInstance}}",
         ]
     )
     while True:
         try:
             child = subprocess.Popen(
-                ["playerctl", "--follow", "--format", fields, "metadata"],
+                player_command(
+                    player_name(playing_now()),
+                    "--follow",
+                    "--format",
+                    fields,
+                    "metadata",
+                ),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 text=True,
@@ -1280,11 +1387,11 @@ def music_thread():
         }
         for line in child.stdout:
             parts = line.rstrip("\n").split("\t")
-            if len(parts) != 8 or not parts[0]:
+            if len(parts) != 9 or not parts[0]:
                 with MUSIC_LOCK:
                     MUSIC = {}
                 continue
-            status, artist, title, album, art_url, page, at, span = parts
+            status, artist, title, album, art_url, page, at, span, player = parts
             if not playing_page(page):
                 with MUSIC_LOCK:
                     MUSIC = {}
@@ -1313,8 +1420,7 @@ def music_thread():
                 position = carried["position"] if carried["position"] <= length else 0.0
             carried["length"] = length
             carried["position"] = position
-            if not carried["player"]:
-                carried["player"] = player_name()
+            carried["player"] = player or carried["player"]
             if not art_url and not carried["art"]:
                 if carried["pid"] is None:
                     carried["pid"] = player_pid(carried["player"])
@@ -1329,6 +1435,7 @@ def music_thread():
                 carried["raw"] = raw_art
             else:
                 raw_art = carried["raw"]
+
             def publish(art, cover):
                 global MUSIC
                 with MUSIC_LOCK:
@@ -1342,6 +1449,7 @@ def music_thread():
                         "cover": cover,
                         "accent": carried["accent"],
                         "service": service_of(page, carried["player"]),
+                        "player": carried["player"],
                         "position": position,
                         "length": length,
                         "stamp": time.time(),
@@ -1405,7 +1513,9 @@ def render_cat(color):
     os.makedirs(RUNCAT_DIR, exist_ok=True)
     for name in CAT_FRAMES:
         try:
-            svg = read_text(f"{RUNCAT_SRC}/{name}.svg", 256 << 10, any_owner=True).replace("#bebebe", color)
+            svg = read_text(
+                f"{RUNCAT_SRC}/{name}.svg", 256 << 10, any_owner=True
+            ).replace("#bebebe", color)
         except OSError:
             continue
         tmp = f"{RUNCAT_DIR}/{name}.svg.tmp"
@@ -1477,7 +1587,9 @@ def system_thread():
         if now - last_tip >= 3.0:
             top = top_process()
             core_txt = "  ".join(f"{c:3.0f}%" for c in per_core)
-            cpu_tip = f"cpu {load:3.0f}%\ncores {core_txt}" + (f"\ntop {top}" if top else "")
+            cpu_tip = f"cpu {load:3.0f}%\ncores {core_txt}" + (
+                f"\ntop {top}" if top else ""
+            )
             last_tip = now
         m = meminfo()
         used = m["MemTotal"] - m["MemAvailable"]
@@ -1519,7 +1631,9 @@ def hypr_events_socket():
 
 def workspace_is_full():
     try:
-        return bool(json.loads(run(["hyprctl", "activeworkspace", "-j"]))["hasfullscreen"])
+        return bool(
+            json.loads(run(["hyprctl", "activeworkspace", "-j"]))["hasfullscreen"]
+        )
     except (KeyError, TypeError, ValueError):
         return False
 
@@ -2039,7 +2153,11 @@ class Island:
             if blocked:
                 state, count, remote_count = "blocked", blocked, blocked_remote
             else:
-                state, count, remote_count = "working", len(local) + len(remote), len(remote)
+                state, count, remote_count = (
+                    "working",
+                    len(local) + len(remote),
+                    len(remote),
+                )
             setattr(
                 self,
                 f"{provider}_action",
@@ -2178,7 +2296,10 @@ class Island:
                 }
             if notice and notice["provider"] == provider:
                 candidate = dict(notice, notice=True)
-                if best is None or BUBBLE_RANK[candidate["kind"]] >= BUBBLE_RANK[best["kind"]]:
+                if (
+                    best is None
+                    or BUBBLE_RANK[candidate["kind"]] >= BUBBLE_RANK[best["kind"]]
+                ):
                     best = candidate
             if best:
                 entries.append((BUBBLE_RANK[best["kind"]], index, best))
@@ -2221,7 +2342,10 @@ class Island:
         for changed, name, path, size in found[:SHELF_LIMIT]:
             kind = shelf_kind(name)
             thumb = shelf_thumb(path, int(changed)) if kind == "image" else ""
-            given_up = hashlib.sha1(f"{path}:{int(changed)}".encode()).hexdigest()[:16] in THUMB_GIVEN_UP
+            given_up = (
+                hashlib.sha1(f"{path}:{int(changed)}".encode()).hexdigest()[:16]
+                in THUMB_GIVEN_UP
+            )
             items.append(
                 {
                     "name": name,
@@ -2235,9 +2359,7 @@ class Island:
                 }
             )
         if any(
-            item["kind"] == "image"
-            and not item["thumb"]
-            and item["retry"]
+            item["kind"] == "image" and not item["thumb"] and item["retry"]
             for item in items
         ):
             self.shelf_seen = None
@@ -2251,12 +2373,17 @@ class Island:
             state = dict(MUSIC)
         if not state or not state.get("title"):
             return None
-        state["muted"] = player_volume() <= 0.001
+        state["muted"] = (
+            player_volume(state.get("player") or player_name(state)) <= 0.001
+        )
         state["liked"] = track_is_liked()
         if not state.get("cover"):
             term = " ".join(
                 part
-                for part in (state.get("artist"), state.get("album") or state.get("title"))
+                for part in (
+                    state.get("artist"),
+                    state.get("album") or state.get("title"),
+                )
                 if part
             ).strip()
             ripe = COVER_READY.get(term)
@@ -2846,7 +2973,6 @@ def usage_listing():
         return json.loads(out).get("providers") or []
     except ValueError:
         return []
-
 
 
 if __name__ == "__main__":
