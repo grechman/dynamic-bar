@@ -425,8 +425,12 @@ Item {
         }
 
         Flickable {
+            id: wifiBox
+
+            readonly property bool expanded: Networking.wifiEnabled
+
             width: parent.width
-            height: Networking.wifiEnabled ? 216 : 0
+            height: expanded ? 216 : 0
             contentHeight: wifiList.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -443,6 +447,20 @@ Item {
                 id: wifiList
 
                 width: parent.width
+                opacity: wifiBox.expanded ? 1 : 0
+
+                Behavior on opacity {
+                    SequentialAnimation {
+                        PauseAnimation {
+                            duration: wifiBox.expanded ? 210 : 0
+                        }
+
+                        NumberAnimation {
+                            duration: wifiBox.expanded ? 170 : 110
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+                }
 
                 Repeater {
                     model: root.networks
@@ -644,8 +662,12 @@ Item {
         }
 
         Flickable {
+            id: btBox
+
+            readonly property bool expanded: !!root.adapter && root.adapter.enabled
+
             width: parent.width
-            height: !!root.adapter && root.adapter.enabled ? Math.min(root.adapter.discovering ? 216 : 108, Math.max(36, root.btDevices.length * 36)) : 0
+            height: expanded ? Math.min(root.adapter.discovering ? 216 : 108, Math.max(36, root.btDevices.length * 36)) : 0
             contentHeight: btList.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -662,6 +684,20 @@ Item {
                 id: btList
 
                 width: parent.width
+                opacity: btBox.expanded ? 1 : 0
+
+                Behavior on opacity {
+                    SequentialAnimation {
+                        PauseAnimation {
+                            duration: btBox.expanded ? 210 : 0
+                        }
+
+                        NumberAnimation {
+                            duration: btBox.expanded ? 170 : 110
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+                }
 
                 Repeater {
                     model: root.btDevices
@@ -736,8 +772,12 @@ Item {
         }
 
         Item {
+            id: scanBox
+
+            readonly property bool expanded: !!root.adapter && root.adapter.enabled
+
             width: parent.width
-            height: !!root.adapter && root.adapter.enabled ? 38 : 0
+            height: expanded ? 38 : 0
             clip: true
 
             Behavior on height {
@@ -749,7 +789,21 @@ Item {
 
             Rectangle {
                 x: 10
+                opacity: scanBox.expanded ? 1 : 0
                 anchors.verticalCenter: parent.verticalCenter
+
+                Behavior on opacity {
+                    SequentialAnimation {
+                        PauseAnimation {
+                            duration: scanBox.expanded ? 210 : 0
+                        }
+
+                        NumberAnimation {
+                            duration: scanBox.expanded ? 170 : 110
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+                }
                 width: parent.width - 20
                 height: 28
                 radius: 10
