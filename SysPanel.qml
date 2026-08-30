@@ -437,9 +437,15 @@ Item {
             visible: height > 0
 
             Behavior on height {
-                NumberAnimation {
-                    duration: 220
-                    easing.type: Easing.InOutCubic
+                SequentialAnimation {
+                    PauseAnimation {
+                        duration: wifiBox.expanded ? 0 : 150
+                    }
+
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.InOutCubic
+                    }
                 }
             }
 
@@ -452,11 +458,11 @@ Item {
                 Behavior on opacity {
                     SequentialAnimation {
                         PauseAnimation {
-                            duration: wifiBox.expanded ? 120 : 0
+                            duration: wifiBox.expanded ? 320 : 0
                         }
 
                         NumberAnimation {
-                            duration: wifiBox.expanded ? 170 : 110
+                            duration: wifiBox.expanded ? 150 : 130
                             easing.type: Easing.OutCubic
                         }
                     }
@@ -674,9 +680,15 @@ Item {
             visible: height > 0
 
             Behavior on height {
-                NumberAnimation {
-                    duration: 220
-                    easing.type: Easing.InOutCubic
+                SequentialAnimation {
+                    PauseAnimation {
+                        duration: btBox.expanded ? 0 : 150
+                    }
+
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.InOutCubic
+                    }
                 }
             }
 
@@ -689,11 +701,11 @@ Item {
                 Behavior on opacity {
                     SequentialAnimation {
                         PauseAnimation {
-                            duration: btBox.expanded ? 120 : 0
+                            duration: btBox.expanded ? 320 : 0
                         }
 
                         NumberAnimation {
-                            duration: btBox.expanded ? 170 : 110
+                            duration: btBox.expanded ? 150 : 130
                             easing.type: Easing.OutCubic
                         }
                     }
@@ -781,9 +793,15 @@ Item {
             clip: true
 
             Behavior on height {
-                NumberAnimation {
-                    duration: 220
-                    easing.type: Easing.InOutCubic
+                SequentialAnimation {
+                    PauseAnimation {
+                        duration: scanBox.expanded ? 0 : 150
+                    }
+
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.InOutCubic
+                    }
                 }
             }
 
@@ -795,11 +813,11 @@ Item {
                 Behavior on opacity {
                     SequentialAnimation {
                         PauseAnimation {
-                            duration: scanBox.expanded ? 120 : 0
+                            duration: scanBox.expanded ? 320 : 0
                         }
 
                         NumberAnimation {
-                            duration: scanBox.expanded ? 170 : 110
+                            duration: scanBox.expanded ? 150 : 130
                             easing.type: Easing.OutCubic
                         }
                     }
