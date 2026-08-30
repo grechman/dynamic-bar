@@ -14,10 +14,30 @@ Item {
     readonly property color muted: palette.muted || "#625e5a"
     readonly property color accent: palette.accent || "#658594"
 
-    readonly property int rooms: 5
     readonly property int slot: 26
+    readonly property var shownRooms: {
+        var found = ({});
+        var rooms = [1, 2, 3, 4, 5];
+        for (var base = 1; base <= 5; base++)
+            found[base] = true;
+        for (var key in occupancy) {
+            var number = parseInt(key);
+            if (isNaN(number) || number < 1 || windowsOf(number).length === 0)
+                continue;
+            if (found[number])
+                continue;
+            found[number] = true;
+            rooms.push(number);
+        }
+        if (!found[here])
+            rooms.push(here);
+        rooms.sort(function (a, b) {
+            return a - b;
+        });
+        return rooms;
+    }
 
-    implicitWidth: rooms * slot
+    implicitWidth: shownRooms.length * slot
     implicitHeight: 27
 
     Component.onCompleted: Hyprland.refreshWorkspaces()
@@ -79,14 +99,15 @@ Item {
     }
 
     Repeater {
-        model: cell.rooms
+        model: cell.shownRooms
 
         Item {
             id: room
 
             required property int index
+            required property int modelData
 
-            readonly property int number: index + 1
+            readonly property int number: modelData
             readonly property bool active: cell.here === number
             readonly property int load: cell.windowsOf(number).length
 
@@ -100,7 +121,7 @@ Item {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 4
                 width: 11
-                height: room.load === 0 ? 3 : 8 + Math.min(2, room.load - 1) * 4 + (room.active ? 6 : 0)
+                height: 8 + Math.min(2, Math.max(0, room.load - 1)) * 4 + (room.active ? 6 : 0)
                 radius: 2
                 antialiasing: true
                 color: room.active ? cell.fg : Qt.rgba(cell.fgAlt.r, cell.fgAlt.g, cell.fgAlt.b, room.load ? 0.42 : 0.26)
