@@ -452,7 +452,7 @@ Item {
                 Behavior on opacity {
                     SequentialAnimation {
                         PauseAnimation {
-                            duration: wifiBox.expanded ? 210 : 0
+                            duration: wifiBox.expanded ? 120 : 0
                         }
 
                         NumberAnimation {
@@ -689,7 +689,7 @@ Item {
                 Behavior on opacity {
                     SequentialAnimation {
                         PauseAnimation {
-                            duration: btBox.expanded ? 210 : 0
+                            duration: btBox.expanded ? 120 : 0
                         }
 
                         NumberAnimation {
@@ -795,7 +795,7 @@ Item {
                 Behavior on opacity {
                     SequentialAnimation {
                         PauseAnimation {
-                            duration: scanBox.expanded ? 210 : 0
+                            duration: scanBox.expanded ? 120 : 0
                         }
 
                         NumberAnimation {

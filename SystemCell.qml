@@ -211,6 +211,7 @@ Item {
         width: cell.shape ? cell.panelWidth : cell.collapsedWidth
         radius: cell.shape ? 26 : height / 2
         antialiasing: true
+        clip: true
         color: Qt.rgba(cell.glassTint.r, cell.glassTint.g, cell.glassTint.b, 1 - 0.38 * cell.glass)
         border.width: 1 + cell.glass
         border.color: Qt.rgba(cell.fg.r, cell.fg.g, cell.fg.b, 0.20 + 0.10 * cell.glass)
