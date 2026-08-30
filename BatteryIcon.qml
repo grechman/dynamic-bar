@@ -9,6 +9,7 @@ Item {
     property color tint: "#a6a69c"
     property color shell: "#a6a69c"
     property color hollow: "#282727"
+    property color chargeMark: "#f4f4ef"
     property real unit: 1
 
     readonly property real stroke: 1.3 * unit
@@ -69,16 +70,16 @@ Item {
         id: bolt
 
         anchors.centerIn: body
-        height: root.bodyHeight - 2 * root.stroke - 0.3 * root.unit
-        width: height * 0.74
+        height: root.bodyHeight - 0.4 * root.unit
+        width: height * 0.72
         visible: root.charging
         antialiasing: true
         preferredRendererType: Shape.CurveRenderer
 
         ShapePath {
-            fillColor: root.shell
+            fillColor: root.chargeMark
             strokeColor: root.hollow
-            strokeWidth: Math.max(1, 1.1 * root.unit)
+            strokeWidth: Math.max(1, root.unit)
             joinStyle: ShapePath.MiterJoin
             startX: bolt.width * 0.62
             startY: 0
