@@ -381,7 +381,7 @@ Scope {
                     bottom: root.bottom
                     left: true
                 }
-                margins.left: 28 + leftCell.implicitWidth
+                margins.left: 158
                 implicitWidth: usage.panelWidth
                 implicitHeight: 720
                 mask: Region {
