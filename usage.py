@@ -1,3 +1,4 @@
+import fcntl
 import glob
 import json
 import os
@@ -28,6 +29,11 @@ BACKOFF_MAX = 3600
 LOG_LIMIT = 512 * 1024
 CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 CLAUDE_UA = "claude-code/2.1.250"
+CLAUDE_TOKEN_URLS = (
+    "https://platform.claude.com/v1/oauth/token",
+    "https://console.anthropic.com/v1/oauth/token",
+)
+CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 CODEX_USAGE_URLS = (
     "https://chatgpt.com/backend-api/codex/usage",
     "https://chatgpt.com/backend-api/wham/usage",
@@ -268,17 +274,112 @@ def detect_claude():
     return os.path.exists(f"{CLAUDE_DIR}/.credentials.json")
 
 
-def fetch_claude():
+def claude_cli_running():
     try:
-        login = read_json(f"{CLAUDE_DIR}/.credentials.json").get("claudeAiOauth") or {}
+        probe = subprocess.run(
+            ["pgrep", "-x", "claude"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return False
+    return probe.returncode == 0
+
+
+def claude_dead(entry, stamp):
+    entry["auth_stamp"] = stamp
+    return Skip("sign-in expired, start claude")
+
+
+def refresh_claude(entry, path):
+    try:
+        stamp = os.stat(path).st_mtime_ns
+    except OSError:
+        raise Skip("not signed in")
+    if entry.get("auth_stamp") == stamp:
+        raise Skip("sign-in expired, start claude")
+    if claude_cli_running():
+        raise Skip("sign-in expired, start claude")
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(f"{STATE_DIR}/claude-refresh.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        creds = read_json(path)
+        login = creds.get("claudeAiOauth") or {}
+        token = str(login.get("accessToken") or "")
+        expires = float(login.get("expiresAt") or 0) / 1000
+        if token and expires > time.time() + 120:
+            return token, login
+        refresh = str(login.get("refreshToken") or "")
+        if not refresh:
+            raise claude_dead(entry, stamp)
+        d = None
+        last = None
+        dead = True
+        for url in CLAUDE_TOKEN_URLS:
+            try:
+                d = http_json(
+                    url,
+                    {
+                        "grant_type": "refresh_token",
+                        "refresh_token": refresh,
+                        "client_id": CLAUDE_CLIENT_ID,
+                    },
+                    {"Content-Type": "application/json", "User-Agent": CLAUDE_UA},
+                )
+                break
+            except HttpError as error:
+                last = error
+                if error.code not in (400, 401, 403):
+                    dead = False
+            except urllib.error.URLError as error:
+                last = error
+                dead = False
+        if d is None:
+            if dead:
+                raise claude_dead(entry, stamp)
+            raise last
+        token = str(d.get("access_token") or "")
+        if not token:
+            raise claude_dead(entry, stamp)
+        login["accessToken"] = token
+        login["refreshToken"] = str(d.get("refresh_token") or refresh)
+        login["expiresAt"] = int(
+            (time.time() + float(d.get("expires_in") or 28800)) * 1000
+        )
+        creds["claudeAiOauth"] = login
+        tmp = path + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as handle:
+            json.dump(creds, handle)
+        os.replace(tmp, path)
+        entry.pop("auth_stamp", None)
+        log("claude: token refreshed")
+        return token, login
+
+
+def claude_token(entry):
+    path = f"{CLAUDE_DIR}/.credentials.json"
+    try:
+        login = read_json(path).get("claudeAiOauth") or {}
     except (OSError, ValueError, AttributeError):
         raise Skip("not signed in")
     token = str(login.get("accessToken") or "")
-    expires = float(login.get("expiresAt") or 0) / 1000
     if not token:
         raise Skip("not signed in")
-    if expires and expires <= time.time():
-        raise Skip("sign-in expired, start claude")
+    expires = float(login.get("expiresAt") or 0) / 1000
+    if not expires or expires > time.time() + 120:
+        entry.pop("auth_stamp", None)
+        return token, login
+    try:
+        return refresh_claude(entry, path)
+    except (Skip, HttpError, urllib.error.URLError):
+        if expires > time.time():
+            return token, login
+        raise
+
+
+def fetch_claude(entry):
+    token, login = claude_token(entry)
     d = http_json(
         CLAUDE_USAGE_URL,
         headers={
@@ -326,7 +427,12 @@ def fetch_claude():
         elif kind == "weekly_scoped" and model:
             slug = re.sub(r"[^a-z0-9]", "", model.lower())[:12] or "model"
             windows.append(
-                window(f"claude:{slug}", MODEL_TAGS.get(slug, slug[:2]), f"{model.lower()} weekly", *entry)
+                window(
+                    f"claude:{slug}",
+                    MODEL_TAGS.get(slug, slug[:2]),
+                    f"{model.lower()} weekly",
+                    *entry,
+                )
             )
     return {
         "plan": plan_label(
@@ -1053,7 +1159,7 @@ def fetch_minimax():
 
 
 PROVIDERS = [
-    ("claude", "Claude", detect_claude, lambda entry: fetch_claude()),
+    ("claude", "Claude", detect_claude, fetch_claude),
     ("codex", "Codex", detect_codex, fetch_codex),
     ("gemini", "Gemini", detect_gemini, lambda entry: fetch_gemini()),
     ("kimi", "Kimi", detect_kimi, lambda entry: fetch_kimi()),
@@ -1294,7 +1400,15 @@ def listing():
     out = []
     for pid, name, detect, _ in PROVIDERS:
         detected = bool(detect())
-        out.append({"id": pid, "name": name, "detected": detected, "enabled": pid in wanted if wanted else detected, "pinned": pid in cfg["pinned"]})
+        out.append(
+            {
+                "id": pid,
+                "name": name,
+                "detected": detected,
+                "enabled": pid in wanted if wanted else detected,
+                "pinned": pid in cfg["pinned"],
+            }
+        )
     if not cfg["pinned"]:
         for entry in [e for e in out if e["enabled"]][:2]:
             entry["pinned"] = True

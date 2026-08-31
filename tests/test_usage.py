@@ -59,7 +59,7 @@ class Parsers(unittest.TestCase):
                 usage, "http_json", fake_http([("oauth/usage", payload)])
             ),
         ):
-            out = usage.fetch_claude()
+            out = usage.fetch_claude({})
         self.assertEqual(out["plan"], "Max 20x")
         self.assertEqual(
             [(w["tag"], w["pct"]) for w in out["windows"]],
@@ -67,21 +67,98 @@ class Parsers(unittest.TestCase):
         )
         self.assertAlmostEqual(out["windows"][0]["reset"], 1787947200, delta=1)
 
-    def test_claude_expired_login_skips_without_network(self):
-        creds = {
-            "claudeAiOauth": {
-                "accessToken": "t",
-                "expiresAt": (time.time() - 10) * 1000,
-            }
+    def claude_fixture(self, oauth):
+        home = tempfile.mkdtemp(prefix="claude-cfg-")
+        with open(f"{home}/.credentials.json", "w") as handle:
+            json.dump({"claudeAiOauth": oauth, "keep": True}, handle)
+        return home
+
+    def expired_oauth(self):
+        return {
+            "accessToken": "old",
+            "refreshToken": "r1",
+            "expiresAt": (time.time() - 10) * 1000,
+            "subscriptionType": "max",
         }
+
+    def test_claude_running_cli_blocks_refresh(self):
+        home = self.claude_fixture(self.expired_oauth())
         with (
-            mock.patch.object(usage, "read_json", return_value=creds),
+            mock.patch.object(usage, "CLAUDE_DIR", home),
+            mock.patch.object(usage, "claude_cli_running", return_value=True),
             mock.patch.object(
                 usage, "http_json", side_effect=AssertionError("no network")
             ),
         ):
             with self.assertRaises(usage.Skip):
-                usage.fetch_claude()
+                usage.fetch_claude({})
+
+    def test_claude_refresh_persists_rotated_tokens(self):
+        home = self.claude_fixture(self.expired_oauth())
+        grant = {"access_token": "new", "refresh_token": "r2", "expires_in": 3600}
+        payload = {
+            "five_hour": {"utilization": 10.0, "resets_at": "2026-08-31T10:00:00Z"}
+        }
+        entry = {}
+        with (
+            mock.patch.object(usage, "CLAUDE_DIR", home),
+            mock.patch.object(usage, "claude_cli_running", return_value=False),
+            mock.patch.object(
+                usage,
+                "http_json",
+                fake_http([("oauth/token", grant), ("oauth/usage", payload)]),
+            ),
+        ):
+            out = usage.fetch_claude(entry)
+        path = f"{home}/.credentials.json"
+        with open(path) as handle:
+            saved = json.load(handle)
+        self.assertEqual(saved["claudeAiOauth"]["accessToken"], "new")
+        self.assertEqual(saved["claudeAiOauth"]["refreshToken"], "r2")
+        self.assertTrue(saved["keep"])
+        self.assertGreater(saved["claudeAiOauth"]["expiresAt"], time.time() * 1000)
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        self.assertEqual(out["plan"], "Max")
+        self.assertEqual(out["windows"][0]["pct"], 10)
+        self.assertNotIn("auth_stamp", entry)
+
+    def test_claude_dead_refresh_latches_offline(self):
+        home = self.claude_fixture(self.expired_oauth())
+        entry = {}
+        with (
+            mock.patch.object(usage, "CLAUDE_DIR", home),
+            mock.patch.object(usage, "claude_cli_running", return_value=False),
+            mock.patch.object(
+                usage, "http_json", fake_http([("oauth/token", usage.HttpError(400))])
+            ),
+        ):
+            with self.assertRaises(usage.Skip):
+                usage.fetch_claude(entry)
+        self.assertIn("auth_stamp", entry)
+        with (
+            mock.patch.object(usage, "CLAUDE_DIR", home),
+            mock.patch.object(
+                usage, "http_json", side_effect=AssertionError("no network")
+            ),
+        ):
+            with self.assertRaises(usage.Skip):
+                usage.fetch_claude(entry)
+
+    def test_claude_refresh_ratelimit_backs_off(self):
+        home = self.claude_fixture(self.expired_oauth())
+        entry = {}
+        with (
+            mock.patch.object(usage, "CLAUDE_DIR", home),
+            mock.patch.object(usage, "claude_cli_running", return_value=False),
+            mock.patch.object(
+                usage,
+                "http_json",
+                fake_http([("oauth/token", usage.HttpError(429, 60))]),
+            ),
+        ):
+            with self.assertRaises(usage.HttpError):
+                usage.fetch_claude(entry)
+        self.assertNotIn("auth_stamp", entry)
 
     def test_gemini_groups_buckets(self):
         payload = {

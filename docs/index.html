@@ -95,7 +95,7 @@
           <tr><td>Kimi, GLM, Grok, Copilot, MiniMax</td><td>their CLI logins or API keys</td></tr>
           <tr><td>anything Omarchy collects</td><td><code>omarchy-agent-usage-*</code> records</td></tr>
         </table>
-        <p class="muted" style="margin-top:12px">Credentials are only read. Tokens are never refreshed or rewritten; an expired login keeps the last numbers until their window resets and says what to run.</p>
+        <p class="muted" style="margin-top:12px">Credentials are only read, with one exception: an expired Claude Code login is refreshed in place while no claude process is running, so its numbers stay live. Other tokens are never refreshed or rewritten; an expired login keeps the last numbers until their window resets and says what to run.</p>
       </div>
     </div>
   </div>

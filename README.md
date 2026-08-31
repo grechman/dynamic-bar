@@ -114,9 +114,12 @@ installed there; `sqlite3` and `jq` must exist on the remote side.
 ## AI limits
 
 Providers are detected from their own credential files; nothing is copied or
-stored. The plugin never refreshes or rewrites another tool's tokens: when a
-sign-in expires the last numbers stay visible until their window resets and
-the panel says what to run.
+stored. Claude is the one exception to read-only access: when the Claude Code
+sign-in has expired and no `claude` process is running, the plugin refreshes
+the OAuth token itself and rewrites `~/.claude/.credentials.json` in place, so
+the numbers stay live between sessions. All other tokens are never refreshed
+or rewritten: when a sign-in expires the last numbers stay visible until their
+window resets and the panel says what to run.
 
 | provider | source |
 |---|---|
