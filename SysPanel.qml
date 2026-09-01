@@ -430,7 +430,7 @@ Item {
             readonly property bool expanded: Networking.wifiEnabled
 
             width: parent.width
-            height: expanded ? 216 : 0
+            height: expanded ? Math.min(216, Math.max(36, root.networks.length * 36)) : 0
             contentHeight: wifiList.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds

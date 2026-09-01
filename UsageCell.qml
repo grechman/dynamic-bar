@@ -254,6 +254,8 @@ Item {
         border.color: Qt.rgba(cell.fg.r, cell.fg.g, cell.fg.b, 0.20 + 0.10 * cell.glass)
 
         Behavior on height {
+            enabled: !cell.content
+
             NumberAnimation {
                 duration: cell.shape ? 320 : 360
                 easing.type: Easing.InOutCubic
