@@ -6,6 +6,7 @@ import re
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -347,11 +348,14 @@ def refresh_claude(entry, path):
             (time.time() + float(d.get("expires_in") or 28800)) * 1000
         )
         creds["claudeAiOauth"] = login
-        tmp = path + ".tmp"
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as handle:
-            json.dump(creds, handle)
-        os.replace(tmp, path)
+        fd, tmp = tempfile.mkstemp(dir=CLAUDE_DIR, prefix=".credentials.")
+        try:
+            with os.fdopen(fd, "w") as handle:
+                json.dump(creds, handle)
+            os.replace(tmp, path)
+        except BaseException:
+            os.unlink(tmp)
+            raise
         entry.pop("auth_stamp", None)
         log("claude: token refreshed")
         return token, login
