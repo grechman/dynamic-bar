@@ -1,12 +1,13 @@
 import fcntl
 import glob
 import json
+import math
 import os
 import re
+import secrets
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -292,6 +293,98 @@ def claude_dead(entry, stamp):
     return Skip("sign-in expired, start claude")
 
 
+TOKEN_CAP = 4096
+EXPIRES_MIN = 60
+EXPIRES_MAX = 30 * 86400
+CREDENTIALS = ".credentials.json"
+
+
+def token_string(value):
+    if not isinstance(value, str) or not value or len(value) > TOKEN_CAP:
+        return ""
+    if any(c.isspace() or not c.isprintable() for c in value):
+        return ""
+    return value
+
+
+def token_seconds(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    if not math.isfinite(value) or not EXPIRES_MIN <= value <= EXPIRES_MAX:
+        return 0
+    return float(value)
+
+
+def expires_at(login):
+    value = login.get("expiresAt")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    if not math.isfinite(value) or value < 0:
+        return 0.0
+    return float(value) / 1000
+
+
+def credentials_dir():
+    fd = os.open(
+        CLAUDE_DIR, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+            raise OSError(f"untrusted directory: {CLAUDE_DIR}")
+    except OSError:
+        os.close(fd)
+        raise
+    return fd
+
+
+def credentials_snapshot(dirfd):
+    fd = os.open(
+        CREDENTIALS, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dirfd
+    )
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            raise OSError(f"untrusted file: {CREDENTIALS}")
+        if info.st_size > FILE_CAP:
+            raise OSError(f"too large: {CREDENTIALS}")
+        raw = os.read(fd, FILE_CAP + 1)
+    finally:
+        os.close(fd)
+    pin = (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size, raw)
+    return json.loads(raw.decode("utf-8")), pin
+
+
+def replace_credentials(dirfd, pin, creds):
+    if claude_cli_running():
+        raise Skip("sign-in expired, start claude")
+    if credentials_snapshot(dirfd)[1] != pin:
+        raise Skip("credentials changed underneath")
+    tmp = f".credentials.{os.getpid()}.{secrets.token_hex(8)}.tmp"
+    fd = os.open(
+        tmp,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+        0o600,
+        dir_fd=dirfd,
+    )
+    try:
+        try:
+            os.write(fd, json.dumps(creds).encode("utf-8"))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        if claude_cli_running() or credentials_snapshot(dirfd)[1] != pin:
+            raise Skip("credentials changed underneath")
+        os.rename(tmp, CREDENTIALS, src_dir_fd=dirfd, dst_dir_fd=dirfd)
+    except BaseException:
+        try:
+            os.unlink(tmp, dir_fd=dirfd)
+        except OSError:
+            pass
+        raise
+    os.fsync(dirfd)
+
+
 def refresh_claude(entry, path):
     try:
         stamp = os.stat(path).st_mtime_ns
@@ -304,61 +397,71 @@ def refresh_claude(entry, path):
     os.makedirs(STATE_DIR, exist_ok=True)
     with open(f"{STATE_DIR}/claude-refresh.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        creds = read_json(path)
-        login = creds.get("claudeAiOauth") or {}
-        token = str(login.get("accessToken") or "")
-        expires = float(login.get("expiresAt") or 0) / 1000
-        if token and expires > time.time() + 120:
-            return token, login
-        refresh = str(login.get("refreshToken") or "")
-        if not refresh:
-            raise claude_dead(entry, stamp)
-        d = None
-        last = None
-        dead = True
-        for url in CLAUDE_TOKEN_URLS:
-            try:
-                d = http_json(
-                    url,
-                    {
-                        "grant_type": "refresh_token",
-                        "refresh_token": refresh,
-                        "client_id": CLAUDE_CLIENT_ID,
-                    },
-                    {"Content-Type": "application/json", "User-Agent": CLAUDE_UA},
-                )
-                break
-            except HttpError as error:
-                last = error
-                if error.code not in (400, 401, 403):
-                    dead = False
-            except urllib.error.URLError as error:
-                last = error
-                dead = False
-        if d is None:
-            if dead:
-                raise claude_dead(entry, stamp)
-            raise last
-        token = str(d.get("access_token") or "")
-        if not token:
-            raise claude_dead(entry, stamp)
-        login["accessToken"] = token
-        login["refreshToken"] = str(d.get("refresh_token") or refresh)
-        login["expiresAt"] = int(
-            (time.time() + float(d.get("expires_in") or 28800)) * 1000
-        )
-        creds["claudeAiOauth"] = login
-        fd, tmp = tempfile.mkstemp(dir=CLAUDE_DIR, prefix=".credentials.")
+        dirfd = credentials_dir()
         try:
-            with os.fdopen(fd, "w") as handle:
-                json.dump(creds, handle)
-            os.replace(tmp, path)
-        except BaseException:
-            os.unlink(tmp)
-            raise
-        entry.pop("auth_stamp", None)
-        log("claude: token refreshed")
+            return refresh_pinned(entry, stamp, dirfd)
+        finally:
+            os.close(dirfd)
+
+
+def refresh_pinned(entry, stamp, dirfd):
+    creds, pin = credentials_snapshot(dirfd)
+    if not isinstance(creds, dict):
+        raise Skip("not signed in")
+    login = creds.get("claudeAiOauth")
+    if not isinstance(login, dict):
+        raise Skip("not signed in")
+    token = token_string(login.get("accessToken"))
+    if token and expires_at(login) > time.time() + 120:
         return token, login
+    refresh = token_string(login.get("refreshToken"))
+    if not refresh:
+        raise claude_dead(entry, stamp)
+    d = None
+    last = None
+    dead = True
+    for url in CLAUDE_TOKEN_URLS:
+        try:
+            d = http_json(
+                url,
+                {
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh,
+                    "client_id": CLAUDE_CLIENT_ID,
+                },
+                {"Content-Type": "application/json", "User-Agent": CLAUDE_UA},
+            )
+            break
+        except HttpError as error:
+            last = error
+            if error.code not in (400, 401, 403):
+                dead = False
+        except urllib.error.URLError as error:
+            last = error
+            dead = False
+    if d is None:
+        if dead:
+            raise claude_dead(entry, stamp)
+        raise last
+    if not isinstance(d, dict):
+        raise Skip("malformed token response")
+    token = token_string(d.get("access_token"))
+    if not token:
+        raise claude_dead(entry, stamp)
+    rotated = d.get("refresh_token")
+    if rotated is not None and not token_string(rotated):
+        raise Skip("malformed token response")
+    seconds = token_seconds(d.get("expires_in"))
+    if not seconds:
+        raise Skip("malformed token response")
+    login["accessToken"] = token
+    login["refreshToken"] = rotated or refresh
+    login["expiresAt"] = int((time.time() + seconds) * 1000)
+    creds["claudeAiOauth"] = login
+    replace_credentials(dirfd, pin, creds)
+    entry.pop("auth_stamp", None)
+    log("claude: token refreshed")
+    return token, login
 
 
 def claude_token(entry):
@@ -367,10 +470,10 @@ def claude_token(entry):
         login = read_json(path).get("claudeAiOauth") or {}
     except (OSError, ValueError, AttributeError):
         raise Skip("not signed in")
-    token = str(login.get("accessToken") or "")
+    token = token_string(login.get("accessToken"))
     if not token:
         raise Skip("not signed in")
-    expires = float(login.get("expiresAt") or 0) / 1000
+    expires = expires_at(login)
     if not expires or expires > time.time() + 120:
         entry.pop("auth_stamp", None)
         return token, login

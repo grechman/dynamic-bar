@@ -122,6 +122,62 @@ class Parsers(unittest.TestCase):
         self.assertEqual(out["windows"][0]["pct"], 10)
         self.assertNotIn("auth_stamp", entry)
 
+    def refresh_attempt(self, home, grant, entry=None):
+        with (
+            mock.patch.object(usage, "CLAUDE_DIR", home),
+            mock.patch.object(usage, "claude_cli_running", return_value=False),
+            mock.patch.object(usage, "http_json", fake_http([("oauth/token", grant)])),
+        ):
+            usage.fetch_claude({} if entry is None else entry)
+
+    def saved_oauth(self, home):
+        with open(f"{home}/.credentials.json") as handle:
+            return json.load(handle)["claudeAiOauth"]
+
+    def test_claude_refresh_aborts_when_file_changes(self):
+        home = self.claude_fixture(self.expired_oauth())
+        path = f"{home}/.credentials.json"
+
+        def rewrite(url, data=None, headers=None, method=None, timeout=15):
+            fresh = dict(self.expired_oauth(), accessToken="cli", refreshToken="r9")
+            with open(path, "w") as handle:
+                json.dump({"claudeAiOauth": fresh}, handle)
+            return {"access_token": "new", "refresh_token": "r2", "expires_in": 3600}
+
+        with (
+            mock.patch.object(usage, "CLAUDE_DIR", home),
+            mock.patch.object(usage, "claude_cli_running", return_value=False),
+            mock.patch.object(usage, "http_json", rewrite),
+        ):
+            with self.assertRaises(usage.Skip):
+                usage.fetch_claude({})
+        self.assertEqual(self.saved_oauth(home)["accessToken"], "cli")
+        self.assertEqual(self.saved_oauth(home)["refreshToken"], "r9")
+        self.assertEqual(
+            [f for f in os.listdir(home) if f.endswith(".tmp")], []
+        )
+
+    def test_claude_refresh_rejects_bad_expiry(self):
+        for bad in (float("inf"), float("nan"), -5, 0, 10**12, "3600", True, None):
+            home = self.claude_fixture(self.expired_oauth())
+            grant = {"access_token": "new", "refresh_token": "r2", "expires_in": bad}
+            with self.assertRaises(usage.Skip):
+                self.refresh_attempt(home, grant)
+            self.assertEqual(self.saved_oauth(home)["accessToken"], "old")
+
+    def test_claude_refresh_rejects_bad_tokens(self):
+        for bad in ("x" * 5000, "a b", "a\n", "", 7, "\x00"):
+            home = self.claude_fixture(self.expired_oauth())
+            grant = {"access_token": bad, "refresh_token": "r2", "expires_in": 3600}
+            with self.assertRaises(usage.Skip):
+                self.refresh_attempt(home, grant)
+            self.assertEqual(self.saved_oauth(home)["accessToken"], "old")
+        home = self.claude_fixture(self.expired_oauth())
+        grant = {"access_token": "new", "refresh_token": "r 2", "expires_in": 3600}
+        with self.assertRaises(usage.Skip):
+            self.refresh_attempt(home, grant)
+        self.assertEqual(self.saved_oauth(home)["refreshToken"], "r1")
+
     def test_claude_dead_refresh_latches_offline(self):
         home = self.claude_fixture(self.expired_oauth())
         entry = {}
