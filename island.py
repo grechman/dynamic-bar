@@ -9,6 +9,7 @@ import os
 import queue
 import re
 import fcntl
+import select
 import signal
 import socket
 import shutil
@@ -382,14 +383,113 @@ def battery():
     return None, None
 
 
-def run(cmd, timeout=5):
+RUN_CAP = 1 << 20
+CLIP_IMAGE_CAP = 32 << 20
+LINE_CAP = 1 << 16
+FIELD_CAP = 4096
+
+
+class Bounded:
+    __slots__ = ("code", "stdout", "clipped")
+
+    def __init__(self, code, stdout, clipped):
+        self.code = code
+        self.stdout = stdout
+        self.clipped = clipped
+
+    @property
+    def ok(self):
+        return self.code == 0 and not self.clipped
+
+    @property
+    def text(self):
+        return self.stdout.decode("utf-8", "replace")
+
+
+def kill_group(proc):
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(proc.pid, sig)
+        except OSError:
+            pass
+        try:
+            proc.wait(timeout=2)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def spawn(cmd, stdin=subprocess.DEVNULL, shell=False):
+    return subprocess.Popen(
+        cmd,
+        shell=shell,
+        stdin=stdin,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def bounded_run(cmd, cap=RUN_CAP, timeout=5, input=None, shell=False):
     try:
-        r = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, check=False
+        proc = spawn(
+            cmd, subprocess.PIPE if input is not None else subprocess.DEVNULL, shell
         )
-        return r.stdout if r.returncode == 0 else ""
-    except Exception:
-        return ""
+    except OSError:
+        return Bounded(-1, b"", False)
+    deadline = time.monotonic() + timeout
+    chunks = []
+    size = 0
+    clipped = False
+    try:
+        if input is not None:
+            payload = input.encode() if isinstance(input, str) else input
+            try:
+                proc.stdin.write(payload)
+                proc.stdin.close()
+            except OSError:
+                pass
+        fd = proc.stdout.fileno()
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0 or not select.select([fd], [], [], left)[0]:
+                clipped = True
+                break
+            chunk = os.read(fd, 1 << 16)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > cap:
+                clipped = True
+                break
+            chunks.append(chunk)
+        if not clipped:
+            try:
+                proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                clipped = True
+    finally:
+        if proc.poll() is None:
+            kill_group(proc)
+        proc.stdout.close()
+    return Bounded(proc.returncode, b"".join(chunks), clipped)
+
+
+def bounded_lines(stream, line_cap=LINE_CAP):
+    while True:
+        line = stream.readline(line_cap + 1)
+        if not line:
+            return
+        if len(line) > line_cap:
+            while line and not line.endswith(b"\n"):
+                line = stream.readline(line_cap)
+            continue
+        yield line.rstrip(b"\n").decode("utf-8", "replace")
+
+
+def run(cmd, timeout=5, cap=RUN_CAP):
+    result = bounded_run(cmd, cap, timeout)
+    return result.text if result.ok else ""
 
 
 def clean_notification_text(value):
@@ -416,7 +516,7 @@ def claude_session_activity(session):
 
 
 def raw_pixels(path, size=48):
-    result = subprocess.run(
+    result = bounded_run(
         [
             "ffmpeg",
             "-v",
@@ -431,10 +531,10 @@ def raw_pixels(path, size=48):
             "rgb24",
             "-",
         ],
-        capture_output=True,
-        check=False,
+        size * size * 3,
+        20,
     )
-    data = result.stdout
+    data = result.stdout if result.ok else b""
     return [tuple(data[i : i + 3]) for i in range(0, len(data) - 2, 3)]
 
 
@@ -668,17 +768,17 @@ def art_asset(url):
             handle.write(payload)
     edge = source_edge(source)
     stage = f"{image}.{os.getpid()}.{threading.get_ident()}.part.png"
-    result = subprocess.run(
+    result = bounded_run(
         ["ffmpeg", "-v", "error", "-y", "-i", source, "-vf", COVER_TILE, stage],
-        capture_output=True,
-        check=False,
+        LINE_CAP,
+        30,
     )
     if source.endswith(".src"):
         try:
             os.remove(source)
         except OSError:
             pass
-    if result.returncode != 0 or not os.path.exists(stage):
+    if not result.ok or not os.path.exists(stage):
         try:
             os.remove(stage)
         except OSError:
@@ -762,7 +862,7 @@ def shelf_thumb(path, stamp):
     if key in THUMB_GIVEN_UP:
         return ""
     os.makedirs(SHELF_THUMBS, exist_ok=True)
-    result = subprocess.run(
+    result = bounded_run(
         [
             "ffmpeg",
             "-v",
@@ -774,10 +874,10 @@ def shelf_thumb(path, stamp):
             "scale=128:128:force_original_aspect_ratio=increase,crop=128:128",
             thumb,
         ],
-        capture_output=True,
-        check=False,
+        LINE_CAP,
+        30,
     )
-    if result.returncode == 0 and os.path.exists(thumb):
+    if result.ok and os.path.exists(thumb):
         return thumb
     THUMB_GIVEN_UP.add(key)
     return ""
@@ -832,17 +932,14 @@ def shelf_paste():
     if picture:
         suffix = picture.split("/")[-1].split("+")[0]
         target = shelf_unique(f"shot-{datetime.now():%H%M%S}.{suffix}")
-        blob = subprocess.run(
-            ["wl-paste", "--type", picture], capture_output=True, check=False
-        ).stdout
+        grab = bounded_run(["wl-paste", "--type", picture], CLIP_IMAGE_CAP, 10)
+        blob = grab.stdout if grab.ok else b""
         if not blob:
             return
         with open(target, "wb") as handle:
             handle.write(blob)
         return
-    text = subprocess.run(
-        ["wl-paste", "--no-newline"], capture_output=True, text=True, check=False
-    ).stdout
+    text = run(["wl-paste", "--no-newline"], 10)
     if not text.strip():
         return
     target = shelf_unique(f"{shelf_slug(text[:60])}.txt")
@@ -1014,7 +1111,7 @@ def shelf_command(action, argument=""):
 def player_pid(name):
     if not name:
         return ""
-    result = subprocess.run(
+    parts = run(
         [
             "busctl",
             "--user",
@@ -1026,11 +1123,9 @@ def player_pid(name):
             "s",
             f"org.mpris.MediaPlayer2.{name}",
         ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    parts = result.stdout.split()
+        5,
+        FIELD_CAP,
+    ).split()
     return parts[1] if len(parts) == 2 and parts[1].isdigit() else ""
 
 
@@ -1048,24 +1143,21 @@ def playing_page(url):
 
 
 def player_name(state=None):
-    result = subprocess.run(
+    listing = run(
         [
             "playerctl",
             "--all-players",
             "metadata",
             "--format",
             "{{playerInstance}}\t{{status}}\t{{artist}}\t{{title}}",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
+        ]
     )
     wanted_artist = str((state or {}).get("artist") or "")
     wanted_title = str((state or {}).get("title") or "")
     first = ""
     playing = ""
-    for line in result.stdout.splitlines():
-        parts = line.split("\t", 3)
+    for line in listing.splitlines():
+        parts = [field[:FIELD_CAP] for field in line.split("\t", 3)]
         if len(parts) != 4:
             continue
         name, status, artist, title = parts
@@ -1088,11 +1180,7 @@ def focus_player(player=""):
     pid = player_pid(player)
     if not pid:
         return
-    subprocess.run(
-        ["hyprctl", "eval", 'hl.dispatch(hl.dsp.focus({window="pid:' + pid + '"}))'],
-        capture_output=True,
-        check=False,
-    )
+    run(["hyprctl", "eval", 'hl.dispatch(hl.dsp.focus({window="pid:' + pid + '"}))'])
 
 
 YANDEX_TOKEN_FILES = (
@@ -1354,17 +1442,14 @@ def music_thread():
     )
     while True:
         try:
-            child = subprocess.Popen(
+            child = spawn(
                 player_command(
                     player_name(playing_now()),
                     "--follow",
                     "--format",
                     fields,
                     "metadata",
-                ),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
+                )
             )
         except OSError:
             time.sleep(10)
@@ -1385,8 +1470,8 @@ def music_thread():
             "pid": None,
             "player": "",
         }
-        for line in child.stdout:
-            parts = line.rstrip("\n").split("\t")
+        for line in bounded_lines(child.stdout):
+            parts = [field[:FIELD_CAP] for field in line.split("\t")]
             if len(parts) != 9 or not parts[0]:
                 with MUSIC_LOCK:
                     MUSIC = {}
@@ -1475,7 +1560,7 @@ def music_thread():
                 image,
                 carried["shown"] if carried["shownEdge"] >= COVER_MIN else "",
             )
-        child.wait()
+        kill_group(child)
         with CHILDREN_LOCK:
             CHILDREN.discard(child)
         with MUSIC_LOCK:
@@ -1700,7 +1785,7 @@ def stop_children(_signum, _frame):
     with CHILDREN_LOCK:
         children = tuple(CHILDREN)
     for child in children:
-        child.terminate()
+        kill_group(child)
     raise SystemExit(0)
 
 
@@ -2772,22 +2857,14 @@ def remote_pull_thread():
             delay = 15.0
             continue
         try:
-            r = subprocess.run(
-                shell,
-                shell=True,
-                input=script,
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False,
-            )
-            if r.returncode != 0 or len(r.stdout) > (8 << 20):
+            r = bounded_run(shell, 8 << 20, 10, input=script, shell=True)
+            if not r.ok:
                 delay = min(delay * 2, 60.0)
                 continue
             delay = 3.0
             alive = set()
             remote_actions = {"t3": [], "claude": []}
-            for line in r.stdout.splitlines():
+            for line in r.text.splitlines():
                 parts = line.split("\t")
                 if parts[0] == "EVENT" and len(parts) == 2:
                     try:
@@ -2884,16 +2961,12 @@ def telegram_thread():
     while True:
         proc = None
         try:
-            proc = subprocess.Popen(
-                ["busctl", "--user", "monitor", f"--match={match}", "--json=short"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                bufsize=1,
+            proc = spawn(
+                ["busctl", "--user", "monitor", f"--match={match}", "--json=short"]
             )
             with CHILDREN_LOCK:
                 CHILDREN.add(proc)
-            for line in proc.stdout or ():
+            for line in bounded_lines(proc.stdout):
                 try:
                     message = json.loads(line)
                     data = message["payload"]["data"]
@@ -2913,11 +2986,11 @@ def telegram_thread():
                     sender if len(sender) <= 20 else f"{sender[:19].rstrip()}…"
                 )
                 TELEGRAM_MESSAGES.put(short_sender)
-            proc.wait(timeout=1)
         except (OSError, subprocess.SubprocessError):
             time.sleep(2)
         finally:
             if proc is not None:
+                kill_group(proc)
                 with CHILDREN_LOCK:
                     CHILDREN.discard(proc)
         time.sleep(2)

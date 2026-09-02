@@ -220,3 +220,35 @@ class Actions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BoundedRun(unittest.TestCase):
+    def children(self):
+        out = island.run(["ps", "-o", "pid=,comm=", "--ppid", str(os.getpid())], 5)
+        return [line.split()[1] for line in out.splitlines() if line.split()]
+
+    def test_output_cap_kills_group(self):
+        result = island.bounded_run(["sh", "-c", "yes | cat"], 4096, 5)
+        self.assertTrue(result.clipped)
+        self.assertLessEqual(len(result.stdout), 4096 + (1 << 16))
+        self.assertNotIn("yes", self.children())
+        self.assertNotIn("cat", self.children())
+
+    def test_deadline_kills_group(self):
+        started = island.time.monotonic()
+        result = island.bounded_run(["sh", "-c", "sleep 30; echo late"], 4096, 0.5)
+        self.assertTrue(result.clipped)
+        self.assertLess(island.time.monotonic() - started, 5)
+        self.assertNotIn("sleep", self.children())
+
+    def test_ok_result(self):
+        result = island.bounded_run(["printf", "ab\\ncd"], 64, 5)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.text, "ab\ncd")
+        self.assertEqual(island.run(["false"]), "")
+
+    def test_bounded_lines_skips_long_lines(self):
+        proc = island.spawn(["sh", "-c", "printf 'one\\n'; head -c 200000 /dev/zero | tr '\\0' x; printf '\\ntwo\\n'"])
+        lines = list(island.bounded_lines(proc.stdout, 1 << 16))
+        proc.wait(5)
+        self.assertEqual(lines, ["one", "two"])
