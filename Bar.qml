@@ -24,12 +24,24 @@ Item {
         fontFamily: Style.font.family
     }
 
+    property int crashes: 0
+    property double daemonStarted: Date.now()
+
     Process {
         id: daemon
 
         command: ["python3", root.pluginDir + "/island.py"]
         running: true
-        onExited: relaunch.restart()
+        onExited: {
+            if (Date.now() - root.daemonStarted > 60000)
+                root.crashes = 0;
+            else
+                root.crashes += 1;
+            if (root.crashes >= 8)
+                return;
+            relaunch.interval = Math.min(3000 * Math.pow(2, root.crashes), 300000);
+            relaunch.restart();
+        }
     }
 
     Timer {
@@ -37,7 +49,10 @@ Item {
 
         interval: 3000
         repeat: false
-        onTriggered: daemon.running = true
+        onTriggered: {
+            root.daemonStarted = Date.now();
+            daemon.running = true;
+        }
     }
 
     Process {
