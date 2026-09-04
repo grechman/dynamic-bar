@@ -25,7 +25,7 @@ class Actions(unittest.TestCase):
         for path in os.listdir(f"{ROOT}/tasks"):
             os.remove(f"{ROOT}/tasks/{path}")
 
-    def step(self, t3=None, claude=None, t3_states=None, claude_states=None):
+    def step(self, t3=None, claude=None, t3_states=None, claude_states=None, codex=None):
         isl = self.isl
         previous = isl.current_action()
         previous = dict(previous) if previous else None
@@ -35,7 +35,37 @@ class Actions(unittest.TestCase):
         if claude is not None:
             isl.note_sessions("claude", isl.claude_active, claude, claude_states or {})
             isl.claude_active = claude
+        if codex is not None:
+            isl.note_sessions("codex", isl.codex_active, codex, {})
+            isl.codex_active = codex
         isl.settle_actions(previous)
+
+    def test_codex_is_a_third_provider(self):
+        self.step(t3={"a": False}, claude={}, codex={})
+        self.step(codex={"x": False})
+        self.assertEqual(kinds(self.isl), ["glance"])
+        self.assertEqual(self.isl.queue[0]["provider"], "codex")
+        self.assertEqual(self.isl.bubble_state()["provider"], "codex")
+        self.step(t3={})
+        self.assertEqual(self.isl.current_action()["provider"], "codex")
+        self.assertEqual(self.isl.current_action()["text"], "working")
+
+    def test_session_producer_reads_codex_files(self):
+        directory = f"{ROOT}/codex-sessions"
+        os.makedirs(directory, exist_ok=True)
+        with open(f"/proc/{os.getpid()}/stat") as handle:
+            started = handle.read().split()[21]
+        with open(f"{directory}/live.json", "w") as handle:
+            json.dump({"pid": os.getpid(), "procStart": started, "status": "busy", "sessionId": "live", "updatedAt": 0}, handle)
+        with open(f"{directory}/nopid.json", "w") as handle:
+            json.dump({"pid": 0, "procStart": "", "status": "blocked", "sessionId": "nopid", "updatedAt": island.time.time()}, handle)
+        with open(f"{directory}/stale.json", "w") as handle:
+            json.dump({"pid": 0, "procStart": "", "status": "busy", "sessionId": "stale", "updatedAt": 0}, handle)
+        with open(f"{directory}/dead.json", "w") as handle:
+            json.dump({"pid": os.getpid(), "procStart": "1", "status": "busy", "sessionId": "dead", "updatedAt": 0}, handle)
+        self.isl.session_producer("codex", directory)
+        self.assertEqual(self.isl.codex_active, {"live": False, "nopid": True})
+        self.assertFalse(os.path.exists(f"{directory}/dead.json"))
 
     def test_first_poll_is_silent(self):
         self.step(t3={"a": False})
@@ -151,6 +181,7 @@ class Actions(unittest.TestCase):
         island.REMOTE_ACTIONS = {
             "t3": [{"sessionId": "r", "status": "running", "state": "running"}],
             "claude": [],
+            "codex": [],
         }
         island.REMOTE_ACTIONS_AT = island.REMOTE_STALE + 2
         self.isl.remote_action_producer(island.REMOTE_STALE + 3)

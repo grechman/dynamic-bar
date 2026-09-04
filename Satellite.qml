@@ -274,7 +274,7 @@ Item {
         anchors.verticalCenterOffset: -3 * root.split
         x: 13.5 - width / 2 + (root.view && root.view.provider === "claude" ? -1 : 0)
         text: root.view ? (root.view.icon || "") : ""
-        font.family: "Actions Island"
+        font.family: root.view && root.view.provider === "codex" ? (root.palette.font || "JetBrainsMono Nerd Font") : "Actions Island"
         font.pixelSize: (root.view && root.view.provider === "claude" ? 18 - 2 * root.split : 14 - root.split)
         font.weight: Font.ExtraBold
         renderType: Text.QtRendering
@@ -295,7 +295,7 @@ Item {
         x: root.width - 13.5 - width / 2 + (root.second && root.second.provider === "claude" ? -1 : 0)
         opacity: root.split
         text: root.second ? (root.second.icon || "") : ""
-        font.family: "Actions Island"
+        font.family: root.second && root.second.provider === "codex" ? (root.palette.font || "JetBrainsMono Nerd Font") : "Actions Island"
         font.pixelSize: (root.second && root.second.provider === "claude" ? 18 - 2 * root.split : 14 - root.split)
         font.weight: Font.ExtraBold
         renderType: Text.QtRendering

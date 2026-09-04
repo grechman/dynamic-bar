@@ -39,6 +39,10 @@ Item {
             "label": "Claude Code"
         },
         {
+            "key": "codex",
+            "label": "Codex"
+        },
+        {
             "key": "tailnet",
             "label": "probe host"
         },

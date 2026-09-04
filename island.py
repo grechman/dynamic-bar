@@ -68,6 +68,7 @@ BUBBLE_CLICK = f"{STATE_DIR}/bubble-click"
 DATE_SECONDS = 4
 T3_DB = os.environ.get("ISLAND_T3_DB", f"{HOME}/.t3/userdata/state.sqlite")
 CLAUDE_SESSIONS = os.environ.get("ISLAND_CLAUDE_DIR", f"{HOME}/.cache/island/claude")
+CODEX_SESSIONS = os.environ.get("ISLAND_CODEX_DIR", f"{HOME}/.cache/island/codex")
 CLAUDE_STALE = 300.0
 REMOTE_STALE = 90.0
 RUNTIME_DIR = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
@@ -123,7 +124,7 @@ MUSIC_RESTART = 1.4
 MUSIC = {}
 MUSIC_LOCK = threading.Lock()
 FULLSCREEN = False
-REMOTE_ACTIONS = {"t3": [], "claude": []}
+REMOTE_ACTIONS = {"t3": [], "claude": [], "codex": []}
 REMOTE_ACTIONS_LOCK = threading.Lock()
 REMOTE_ACTIONS_VERSION = 0
 REMOTE_ACTIONS_AT = None
@@ -144,6 +145,7 @@ ICONS = {
     "ram": "\U000f07c6",
     "t3": "\ue000",
     "claude": "\ue001",
+    "codex": "\uec81",
     "telegram": "\uf2c6",
 }
 DEFAULT = {
@@ -178,6 +180,7 @@ DEFAULT = {
         "github": True,
         "t3": True,
         "claude": True,
+        "codex": True,
         "telegram": True,
         "music": True,
     },
@@ -1820,6 +1823,9 @@ class Island:
         self.claude_active = None
         self.remote_claude_active = None
         self.claude_action = None
+        self.codex_active = None
+        self.remote_codex_active = None
+        self.codex_action = None
         self.music_now = None
         self.shelf_now = {"count": 0, "items": [], "ask": ""}
         self.shelf_seen = None
@@ -2138,35 +2144,41 @@ class Island:
         self.note_sessions("t3", self.t3_active, active, states)
         self.t3_active = active
 
-    def claude_producer(self):
+    def session_producer(self, provider, directory):
         active = {}
         states = {}
-        for path in glob.glob(f"{CLAUDE_SESSIONS}/*.json"):
+        for path in glob.glob(f"{directory}/*.json"):
             try:
                 session = read_json(path, 64 << 10)
-                pid = int(session["pid"])
-                proc_start = str(session["procStart"])
-            except (KeyError, OSError, TypeError, ValueError):
+                pid = int(session.get("pid") or 0)
+                proc_start = str(session.get("procStart") or "")
+                updated = float(session.get("updatedAt") or 0)
+            except (OSError, TypeError, ValueError):
                 continue
-            try:
-                with open(f"/proc/{pid}/stat") as stat_file:
-                    live_start = stat_file.read().split()[21]
-            except (OSError, IndexError):
-                live_start = None
+            live_start = None
+            if pid:
+                try:
+                    with open(f"/proc/{pid}/stat") as stat_file:
+                        live_start = stat_file.read().split()[21]
+                except (OSError, IndexError):
+                    pass
             session_id = str(session.get("sessionId") or pid)
             states[session_id] = session.get("status")
-            if live_start != proc_start:
-                if time.time() - float(session.get("updatedAt") or 0) > CLAUDE_STALE:
+            if pid and live_start != proc_start:
+                if time.time() - updated > CLAUDE_STALE:
                     try:
                         os.remove(path)
                     except OSError:
                         pass
                 continue
+            if not pid and time.time() - updated > CLAUDE_STALE:
+                continue
             working, blocked = claude_session_activity(session)
             if working:
                 active[session_id] = blocked
-        self.note_sessions("claude", self.claude_active, active, states)
-        self.claude_active = active
+        previous = getattr(self, f"{provider}_active")
+        self.note_sessions(provider, previous, active, states)
+        setattr(self, f"{provider}_active", active)
 
     def remote_action_producer(self, now):
         with REMOTE_ACTIONS_LOCK:
@@ -2174,7 +2186,7 @@ class Island:
             polled = REMOTE_ACTIONS_AT
             snapshot = {
                 provider: [dict(item) for item in REMOTE_ACTIONS[provider]]
-                for provider in ("t3", "claude")
+                for provider in ("t3", "claude", "codex")
             }
         if polled is not None and now - polled > REMOTE_STALE:
             self.remote_t3_active = None
@@ -2212,6 +2224,22 @@ class Island:
             "claude", self.remote_claude_active, claude_active, claude_states
         )
         self.remote_claude_active = claude_active
+        codex_states = {
+            str(item.get("sessionId")): item.get("status")
+            for item in snapshot["codex"]
+            if item.get("sessionId")
+        }
+        codex_active = {
+            str(item["sessionId"]): item.get("status") == "blocked"
+            for item in snapshot["codex"]
+            if item.get("sessionId")
+            and item.get("status") in ("busy", "blocked")
+            and time.time() - float(item.get("updatedAt") or 0) <= CLAUDE_STALE
+        }
+        self.note_sessions(
+            "codex", self.remote_codex_active, codex_active, codex_states
+        )
+        self.remote_codex_active = codex_active
 
     def note_sessions(self, provider, previous, active, states):
         if previous is None:
@@ -2230,7 +2258,7 @@ class Island:
             change["started"] = True
 
     def sync_actions(self):
-        for provider in ("t3", "claude"):
+        for provider in ("t3", "claude", "codex"):
             local = getattr(self, f"{provider}_active") or {}
             remote = getattr(self, f"remote_{provider}_active") or {}
             blocked_remote = sum(1 for value in remote.values() if value)
@@ -2253,7 +2281,7 @@ class Island:
         self.sync_actions()
         changes = self.action_changes
         self.action_changes = {}
-        for provider in ("t3", "claude"):
+        for provider in ("t3", "claude", "codex"):
             completion = changes.get(provider, {}).get("completion")
             if completion:
                 self.finish_action(provider, *completion)
@@ -2335,14 +2363,18 @@ class Island:
         self.push(event)
 
     def actions(self):
-        return {"t3": self.t3_action, "claude": self.claude_action}
+        return {
+            "t3": self.t3_action,
+            "claude": self.claude_action,
+            "codex": self.codex_action,
+        }
 
     def reconcile_actions(self):
         actions = self.actions()
         primary = actions.get(self.action_primary)
         working = [
             name
-            for name in ("t3", "claude")
+            for name in ("t3", "claude", "codex")
             if actions.get(name) and actions[name]["state"] != "blocked"
         ]
         if primary and (primary["state"] != "blocked" or not working):
@@ -2350,7 +2382,10 @@ class Island:
         self.action_primary = (
             working[0]
             if working
-            else next((name for name in ("t3", "claude") if actions.get(name)), None)
+            else next(
+                (name for name in ("t3", "claude", "codex") if actions.get(name)),
+                None,
+            )
         )
 
     def current_action(self):
@@ -2363,7 +2398,7 @@ class Island:
         task = self.task()
         notice = self.action_notice
         order = []
-        for provider in (self.action_primary, "t3", "claude"):
+        for provider in (self.action_primary, "t3", "claude", "codex"):
             if provider and provider not in order:
                 order.append(provider)
         entries = []
@@ -2484,7 +2519,7 @@ class Island:
         action = self.current_action() if not task else None
         entries = self.bubble_entries()
         bubble = entries[0] if entries else None
-        labels = {"t3": "T3 Code", "claude": "Claude Code"}
+        labels = {"t3": "T3 Code", "claude": "Claude Code", "codex": "Codex"}
         main = None
         if task:
             text = " ".join(
@@ -2687,9 +2722,13 @@ class Island:
         else:
             self.t3_active = None
         if p["claude"]:
-            self.claude_producer()
+            self.session_producer("claude", CLAUDE_SESSIONS)
         else:
             self.claude_active = None
+        if p["codex"]:
+            self.session_producer("codex", CODEX_SESSIONS)
+        else:
+            self.codex_active = None
         self.remote_action_producer(now)
         self.settle_actions(previous)
         if p["external"]:
@@ -2849,6 +2888,11 @@ def remote_pull_thread():
         "fi\n"
         "printf 'CLAUDE\\t%s\\n' \"$raw\"\n"
         "done\n"
+        'for f in "$HOME"/.cache/island/codex/*.json; do\n'
+        '[ -f "$f" ] || continue\n'
+        "raw=$(tr -d '\\n' < \"$f\")\n"
+        "printf 'CODEX\\t%s\\n' \"$raw\"\n"
+        "done\n"
     )
     while True:
         time.sleep(delay)
@@ -2863,7 +2907,7 @@ def remote_pull_thread():
                 continue
             delay = 3.0
             alive = set()
-            remote_actions = {"t3": [], "claude": []}
+            remote_actions = {"t3": [], "claude": [], "codex": []}
             for line in r.text.splitlines():
                 parts = line.split("\t")
                 if parts[0] == "EVENT" and len(parts) == 2:
@@ -2893,6 +2937,11 @@ def remote_pull_thread():
                 elif parts[0] == "CLAUDE" and len(parts) == 2:
                     try:
                         remote_actions["claude"].append(json.loads(parts[1]))
+                    except ValueError:
+                        continue
+                elif parts[0] == "CODEX" and len(parts) == 2:
+                    try:
+                        remote_actions["codex"].append(json.loads(parts[1]))
                     except ValueError:
                         continue
             for name in mirror - alive:

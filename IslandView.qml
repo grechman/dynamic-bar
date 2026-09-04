@@ -396,7 +396,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: shown.icon !== ""
                     text: shown.icon
-                    font.family: "Actions Island"
+                    font.family: shown.provider === "codex" ? view.fontFamily : "Actions Island"
                     font.pixelSize: shown.iconSize
                     font.weight: Font.ExtraBold
                     color: shown.iconColor

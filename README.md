@@ -25,8 +25,8 @@ What is on the bar, left to right:
   subscriptions. Click for the full panel: every window with reset countdown,
   Claude spend per day/week/month computed from local transcripts, and the
   current 5-hour burn rate.
-- **The island**: shows what your coding agents are doing (Claude Code and T3
-  Code, local or on a remote host over ssh), long-running task progress, system
+- **The island**: shows what your coding agents are doing (Claude Code, Codex
+  and T3 Code, local or on a remote host over ssh), long-running task progress, system
   alerts (battery, wifi, bluetooth, RAM, GitHub notifications, ntfy), Telegram
   senders, and the clock. A second agent lives in a satellite bubble. Click the
   pill for producer toggles, hover for the calendar. Drop files, images, links
@@ -106,6 +106,21 @@ Claude Code is tracked through its hook system. Install the hook into
 `uninstall` removes it again, `status` shows what is wired. Sessions driven
 by T3 Code are skipped by the hook because T3 Code is tracked directly through
 its own state database.
+
+Codex is tracked the same way through its hooks (`hooks = true` in
+`~/.codex/config.toml`). Wire `hooks/codex-action-state.py` yourself; the
+plugin never edits that file:
+
+```toml
+[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "python3 /home/you/.config/quickshell/island/hooks/codex-action-state.py"
+timeout = 10
+```
+
+Repeat the block for `UserPromptSubmit`, `PostToolUse`, `PermissionRequest`
+and `Stop`. State files land in `~/.cache/island/codex/`.
 
 For a remote machine set `"remote": "hostname"` in the config to an ssh alias
 from your `~/.ssh/config` (key auth, no prompts). The same hook must be
