@@ -580,37 +580,37 @@ def codex_http():
         raise last
     rl = d.get("rate_limit") or {}
     wins = [w for w in (rl.get("primary_window"), rl.get("secondary_window")) if w]
-    if not wins:
-        raise ValueError("no rate windows")
-    short = min(wins, key=lambda w: w.get("limit_window_seconds", 0))
-    weekly = max(wins, key=lambda w: w.get("limit_window_seconds", 0))
-    out = {
+    extra = {}
+    credits = d.get("rate_limit_reset_credits") or {}
+    if "available_count" in credits:
+        extra["resets_available"] = int(credits.get("available_count") or 0)
+    return {
         "plan": str(d.get("plan_type") or ""),
-        "windows": [
-            window(
-                "codex:5h",
-                "5h",
-                "codex 5h",
-                clamp(short.get("used_percent")),
-                short.get("reset_at"),
-            )
-        ],
+        "windows": codex_windows(
+            [
+                (
+                    w.get("used_percent"),
+                    int(w.get("limit_window_seconds") or 0) // 60,
+                    w.get("reset_at"),
+                )
+                for w in wins
+            ],
+            **extra,
+        ),
     }
-    if weekly is not short:
-        extra = {}
-        credits = d.get("rate_limit_reset_credits") or {}
-        if "available_count" in credits:
-            extra["resets_available"] = int(credits.get("available_count") or 0)
-        out["windows"].append(
-            window(
-                "codex:wk",
-                "wk",
-                "codex weekly",
-                clamp(weekly.get("used_percent")),
-                weekly.get("reset_at"),
-                **extra,
-            )
-        )
+
+
+def codex_windows(specs, **weekly_extra):
+    out = []
+    for pct, minutes, reset in specs:
+        tag = duration_tag(minutes)
+        name = "codex weekly" if tag == "wk" else f"codex {tag}"
+        extra = weekly_extra if tag == "wk" else {}
+        w = window(f"codex:{tag}", tag, name, clamp(pct), reset, **extra)
+        if w:
+            out.append(w)
+    if not out:
+        raise ValueError("no rate windows")
     return out
 
 
@@ -658,33 +658,21 @@ def codex_app_server():
                 raise RuntimeError(f"app-server: {json.dumps(o.get('error'))[:200]}")
             rl = o["result"]["rateLimits"]
             wins = [w for w in (rl.get("primary"), rl.get("secondary")) if w]
-            short = min(wins, key=lambda w: w.get("windowDurationMins", 0))
-            weekly = max(wins, key=lambda w: w.get("windowDurationMins", 0))
             credits = o["result"].get("rateLimitResetCredits") or {}
-            out = {
+            return {
                 "plan": "",
-                "windows": [
-                    window(
-                        "codex:5h",
-                        "5h",
-                        "codex 5h",
-                        clamp(short.get("usedPercent")),
-                        short.get("resetsAt"),
-                    )
-                ],
+                "windows": codex_windows(
+                    [
+                        (
+                            w.get("usedPercent"),
+                            int(w.get("windowDurationMins") or 0),
+                            w.get("resetsAt"),
+                        )
+                        for w in wins
+                    ],
+                    resets_available=int(credits.get("availableCount") or 0),
+                ),
             }
-            if weekly is not short:
-                out["windows"].append(
-                    window(
-                        "codex:wk",
-                        "wk",
-                        "codex weekly",
-                        clamp(weekly.get("usedPercent")),
-                        weekly.get("resetsAt"),
-                        resets_available=int(credits.get("availableCount") or 0),
-                    )
-                )
-            return out
         raise RuntimeError("app-server timeout")
     finally:
         p.kill()
@@ -730,33 +718,20 @@ def codex_sessions():
         ]
         if not wins:
             continue
-        short = min(wins, key=lambda w: w.get("window_minutes", 0))
-        weekly = max(wins, key=lambda w: w.get("window_minutes", 0))
-        stamp = os.path.getmtime(path)
-        out = {
+        return {
             "plan": "",
-            "ts": stamp,
-            "windows": [
-                window(
-                    "codex:5h",
-                    "5h",
-                    "codex 5h",
-                    clamp(short.get("used_percent")),
-                    short.get("resets_at"),
-                )
-            ],
+            "ts": os.path.getmtime(path),
+            "windows": codex_windows(
+                [
+                    (
+                        w.get("used_percent"),
+                        int(w.get("window_minutes") or 0),
+                        w.get("resets_at"),
+                    )
+                    for w in wins
+                ]
+            ),
         }
-        if weekly is not short:
-            out["windows"].append(
-                window(
-                    "codex:wk",
-                    "wk",
-                    "codex weekly",
-                    clamp(weekly.get("used_percent")),
-                    weekly.get("resets_at"),
-                )
-            )
-        return out
     raise Skip("no session data")
 
 
