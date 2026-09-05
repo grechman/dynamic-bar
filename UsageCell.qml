@@ -49,8 +49,16 @@ Item {
         return out;
     }
 
+    function tagOf(provider, slice) {
+        if (provider.windows.length > 1)
+            return slice.tag;
+        var banked = slice.resets_available || 0;
+        return banked > 3 ? banked + "\u2022" : "\u2022".repeat(banked);
+    }
+
     function groupWidth(provider) {
-        return markSlot + provider.windows.length * windowSlot - 7 - (provider.windows.length === 1 ? 18 : 0);
+        var tagless = provider.windows.length === 1 && !tagOf(provider, provider.windows[0]);
+        return markSlot + provider.windows.length * windowSlot - 7 - (tagless ? 18 : 0);
     }
 
     readonly property int groupsWidth: {
@@ -344,9 +352,10 @@ Item {
                                 id: tagText
 
                                 anchors.baseline: number.baseline
-                                visible: group.modelData.windows.length > 1
+                                visible: text !== ""
                                 width: 15
-                                text: parent.modelData.tag
+                                horizontalAlignment: group.modelData.windows.length > 1 ? Text.AlignLeft : Text.AlignRight
+                                text: cell.tagOf(group.modelData, parent.modelData)
                                 font.family: cell.fontFamily
                                 font.pixelSize: 11
                                 color: cell.fgAlt
