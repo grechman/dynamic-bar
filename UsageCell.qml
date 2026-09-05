@@ -50,7 +50,7 @@ Item {
     }
 
     function groupWidth(provider) {
-        return markSlot + provider.windows.length * windowSlot - 7;
+        return markSlot + provider.windows.length * windowSlot - 7 - (provider.windows.length === 1 ? 18 : 0);
     }
 
     readonly property int groupsWidth: {
@@ -344,6 +344,7 @@ Item {
                                 id: tagText
 
                                 anchors.baseline: number.baseline
+                                visible: group.modelData.windows.length > 1
                                 width: 15
                                 text: parent.modelData.tag
                                 font.family: cell.fontFamily
