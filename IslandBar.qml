@@ -280,6 +280,15 @@ Scope {
                 WlrLayershell.namespace: "quickshell-bar"
                 WlrLayershell.layer: WlrLayer.Top
                 WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+                // Input only on the workspaces cell. Without this the
+                // full-width background surface sits above the pill
+                // windows and swallows all clicks/hovers meant for them.
+                mask: Region {
+                    x: leftCell.x
+                    y: leftCell.y
+                    width: leftCell.width
+                    height: leftCell.height
+                }
 
                 readonly property color fg: (root.scene.palette && root.scene.palette.fg) || "#c5c9c5"
                 readonly property color accent: (root.scene.palette && root.scene.palette.accent) || "#658594"
