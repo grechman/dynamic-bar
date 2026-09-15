@@ -1719,8 +1719,16 @@ def hypr_events_socket():
 
 def workspace_is_full():
     try:
-        return bool(
-            json.loads(run(["hyprctl", "activeworkspace", "-j"]))["hasfullscreen"]
+        workspace = json.loads(run(["hyprctl", "activeworkspace", "-j"]))
+        if not workspace["hasfullscreen"]:
+            return False
+        clients = json.loads(run(["hyprctl", "clients", "-j"]))
+        return any(
+            client.get("workspace", {}).get("id") == workspace["id"]
+            and client.get("mapped", True)
+            and not client.get("hidden", False)
+            and int(client.get("fullscreen", 0)) & 2
+            for client in clients
         )
     except (KeyError, TypeError, ValueError):
         return False
