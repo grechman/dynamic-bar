@@ -56,7 +56,9 @@ class Actions(unittest.TestCase):
         with open(f"/proc/{os.getpid()}/stat") as handle:
             started = handle.read().split()[21]
         with open(f"{directory}/live.json", "w") as handle:
-            json.dump({"pid": os.getpid(), "procStart": started, "status": "busy", "sessionId": "live", "updatedAt": 0}, handle)
+            json.dump({"pid": os.getpid(), "procStart": started, "status": "busy", "sessionId": "live", "updatedAt": island.time.time()}, handle)
+        with open(f"{directory}/idle.json", "w") as handle:
+            json.dump({"pid": os.getpid(), "procStart": started, "status": "busy", "sessionId": "idle", "updatedAt": 0}, handle)
         with open(f"{directory}/nopid.json", "w") as handle:
             json.dump({"pid": 0, "procStart": "", "status": "blocked", "sessionId": "nopid", "updatedAt": island.time.time()}, handle)
         with open(f"{directory}/stale.json", "w") as handle:
@@ -66,6 +68,9 @@ class Actions(unittest.TestCase):
         self.isl.session_producer("codex", directory)
         self.assertEqual(self.isl.codex_active, {"live": False, "nopid": True})
         self.assertFalse(os.path.exists(f"{directory}/dead.json"))
+        self.assertTrue(os.path.exists(f"{directory}/idle.json"))
+        self.isl.session_producer("claude", directory)
+        self.assertEqual(self.isl.claude_active, {"live": False, "idle": False, "nopid": True})
 
     def test_first_poll_is_silent(self):
         self.step(t3={"a": False})

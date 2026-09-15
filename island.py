@@ -2172,14 +2172,15 @@ class Island:
                     pass
             session_id = str(session.get("sessionId") or pid)
             states[session_id] = session.get("status")
+            stale = time.time() - updated > CLAUDE_STALE
             if pid and live_start != proc_start:
-                if time.time() - updated > CLAUDE_STALE:
+                if stale:
                     try:
                         os.remove(path)
                     except OSError:
                         pass
                 continue
-            if not pid and time.time() - updated > CLAUDE_STALE:
+            if stale and (not pid or provider == "codex"):
                 continue
             working, blocked = claude_session_activity(session)
             if working:
