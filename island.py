@@ -3046,18 +3046,28 @@ def telegram_thread():
 
 
 def setting_command(key):
-    cfg = load_config()
+    if key == "clear":
+        for stale in glob.glob(f"{TASKS_DIR}/*.json"):
+            os.remove(stale)
+        return
+    if key == "notifications":
+        subprocess.Popen(["swaync-client", "-t", "-sw"])
+        return
+    os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
+    with open(CONFIG + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        cfg = load_config()
+        if tune_config(cfg, key):
+            save_config(cfg)
+
+
+def tune_config(cfg, key):
     if key == "sound":
         cfg["sound"] = not cfg["sound"]
     elif key == "seconds":
         cfg["seconds"] = 2.0 if cfg["seconds"] >= 5 else cfg["seconds"] + 0.5
-    elif key == "clear":
-        for stale in glob.glob(f"{TASKS_DIR}/*.json"):
-            os.remove(stale)
-        return
-    elif key == "notifications":
-        subprocess.Popen(["swaync-client", "-t", "-sw"])
-        return
+    elif key == "seconds-":
+        cfg["seconds"] = 5.0 if cfg["seconds"] <= 2 else cfg["seconds"] - 0.5
     elif key in cfg["producers"]:
         cfg["producers"][key] = not cfg["producers"][key]
     elif key.startswith("usage:") or key.startswith("pin:"):
@@ -3085,8 +3095,8 @@ def setting_command(key):
         name, _, value = key.partition("=")
         cfg[name] = value.strip()
     else:
-        return
-    save_config(cfg)
+        return False
+    return True
 
 
 def usage_listing():
