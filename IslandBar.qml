@@ -119,26 +119,12 @@ Scope {
         }
     }
 
-    Process {
-        id: bubbleClick
-    }
-
     function clickBubble(half) {
-        bubbleClick.command = ["env", "ISLAND_DIR=" + root.stateDir, "python3", root.pluginDir + "/island.py", "bubble", String(half)];
-        bubbleClick.running = true;
-    }
-
-    Process {
-        id: tuneClick
+        Quickshell.execDetached(["env", "ISLAND_DIR=" + root.stateDir, "python3", root.pluginDir + "/island.py", "bubble", String(half)]);
     }
 
     function flipSetting(key) {
-        tuneClick.command = ["env", "ISLAND_DIR=" + root.stateDir, "python3", root.pluginDir + "/island.py", "set", key];
-        tuneClick.running = true;
-    }
-
-    Process {
-        id: musicClick
+        Quickshell.execDetached(["env", "ISLAND_DIR=" + root.stateDir, "python3", root.pluginDir + "/island.py", "set", key]);
     }
 
     Process {
@@ -263,8 +249,7 @@ Scope {
     }
 
     function clickMusic(action) {
-        musicClick.command = ["env", "ISLAND_DIR=" + root.stateDir, "python3", root.pluginDir + "/island.py", "music", action];
-        musicClick.running = true;
+        Quickshell.execDetached(["env", "ISLAND_DIR=" + root.stateDir, "python3", root.pluginDir + "/island.py", "music", action]);
     }
 
     Process {
@@ -567,8 +552,8 @@ Scope {
                 mask: Region {
                     x: settingsWindow.inset
                     y: settingsWindow.inset
-                    width: tune.implicitWidth
-                    height: tune.implicitHeight
+                    width: root.settingsOpen ? tune.implicitWidth : 0
+                    height: root.settingsOpen ? tune.implicitHeight : 0
                 }
                 color: "transparent"
                 exclusionMode: ExclusionMode.Ignore
