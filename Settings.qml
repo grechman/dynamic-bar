@@ -11,6 +11,7 @@ Item {
     property var settings: null
     property var missing: []
     property string pluginDir: ""
+    property bool active: false
 
     signal flip(string key)
 
@@ -21,18 +22,13 @@ Item {
     readonly property color warn: palette.warn || "#c4b28a"
 
     readonly property var producers: settings && settings.producers ? settings.producers : ({})
-    readonly property real seconds: settings && settings.seconds ? settings.seconds : 3
-    readonly property bool sound: !!(settings && settings.sound)
     property var providers: []
+    property var local: ({})
 
-    readonly property var rows: [
+    readonly property var sources: [
         {
             "key": "t3",
             "label": "T3 Code"
-        },
-        {
-            "key": "wifi",
-            "label": "wi-fi"
         },
         {
             "key": "claude",
@@ -43,28 +39,36 @@ Item {
             "label": "Codex"
         },
         {
-            "key": "tailnet",
-            "label": "probe host"
-        },
-        {
             "key": "telegram",
             "label": "Telegram"
-        },
-        {
-            "key": "bluetooth",
-            "label": "bluetooth"
         },
         {
             "key": "github",
             "label": "GitHub"
         },
         {
-            "key": "charging",
-            "label": "charging"
-        },
-        {
             "key": "music",
             "label": "music"
+        },
+        {
+            "key": "wifi",
+            "label": "wi-fi"
+        },
+        {
+            "key": "bluetooth",
+            "label": "bluetooth"
+        },
+        {
+            "key": "tailnet",
+            "label": "probe host"
+        },
+        {
+            "key": "ram",
+            "label": "memory"
+        },
+        {
+            "key": "charging",
+            "label": "charging"
         },
         {
             "key": "battery_full",
@@ -77,10 +81,6 @@ Item {
         {
             "key": "critical",
             "label": "battery critical"
-        },
-        {
-            "key": "ram",
-            "label": "memory"
         },
         {
             "key": "external",
@@ -106,8 +106,40 @@ Item {
         }
     ]
 
+    function has(key) {
+        return Object.prototype.hasOwnProperty.call(local, key);
+    }
+
     function fieldValue(key) {
         return settings && settings[key] ? String(settings[key]) : "";
+    }
+
+    function sourceOn(key) {
+        return has(key) ? local[key] : !!producers[key];
+    }
+
+    function soundOn() {
+        return has("sound") ? local.sound : !!(settings && settings.sound);
+    }
+
+    function holdSeconds() {
+        if (has("seconds"))
+            return local.seconds;
+        return settings && settings.seconds ? settings.seconds : 3;
+    }
+
+    function providerFlag(provider, kind) {
+        var key = kind + ":" + provider.id;
+        return has(key) ? local[key] : !!(kind === "usage" ? provider.enabled : provider.pinned);
+    }
+
+    function remember(key, value) {
+        var next = ({});
+        for (var k in local)
+            next[k] = local[k];
+        next[key] = value;
+        local = next;
+        settle.restart();
     }
 
     function refresh() {
@@ -116,17 +148,55 @@ Item {
     }
 
     function act(key) {
-        root.flip(key);
-        if (key.indexOf("usage:") === 0 || key.indexOf("pin:") === 0)
+        if (key === "sound")
+            remember(key, !soundOn());
+        else if (key === "seconds") {
+            var now = holdSeconds();
+            remember(key, now >= 5 ? 2 : now + 0.5);
+        } else if (key.indexOf("usage:") === 0 || key.indexOf("pin:") === 0) {
+            var kind = key.split(":")[0];
+            for (var i = 0; i < providers.length; i++)
+                if (providers[i].id === key.split(":")[1])
+                    remember(key, !providerFlag(providers[i], kind));
             relist.restart();
+        } else if (key in producers)
+            remember(key, !sourceOn(key));
+        root.flip(key);
+    }
+
+    onActiveChanged: {
+        if (active)
+            refresh();
+    }
+
+    onSettingsChanged: {
+        var next = ({});
+        var changed = false;
+        for (var k in local) {
+            var live = k === "sound" ? !!(settings && settings.sound) : k === "seconds" ? holdSeconds() : k in producers ? !!producers[k] : null;
+            if (live !== null && live === local[k])
+                changed = true;
+            else
+                next[k] = local[k];
+        }
+        if (changed)
+            local = next;
     }
 
     Component.onCompleted: refresh()
 
     Timer {
+        id: settle
+
+        interval: 3000
+        repeat: false
+        onTriggered: root.local = ({})
+    }
+
+    Timer {
         id: relist
 
-        interval: 400
+        interval: 900
         repeat: false
         onTriggered: root.refresh()
     }
@@ -140,79 +210,189 @@ Item {
             onStreamFinished: {
                 try {
                     root.providers = JSON.parse(text).providers || [];
+                    var next = ({});
+                    for (var k in root.local)
+                        if (k.indexOf("usage:") !== 0 && k.indexOf("pin:") !== 0)
+                            next[k] = root.local[k];
+                    root.local = next;
                 } catch (e) {
                 }
             }
         }
     }
 
-    implicitWidth: 384
-    implicitHeight: column.implicitHeight
+    implicitWidth: 448
+    implicitHeight: column.implicitHeight + 40
 
-    component Label: Text {
+    component Cap: Text {
         textFormat: Text.PlainText
         font.family: root.fontFamily
-        font.pixelSize: 12
-        font.letterSpacing: 1.1
-        color: root.fgAlt
+        font.pixelSize: 10
+        font.weight: Font.DemiBold
+        font.letterSpacing: 1.6
+        font.capitalization: Font.AllUppercase
+        color: root.muted
+    }
+
+    component Switch: Rectangle {
+        id: sw
+
+        property bool on: false
+        property bool dim: false
+
+        width: 34
+        height: 20
+        radius: 10
+        antialiasing: true
+        opacity: dim ? 0.45 : 1
+        color: on ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.85) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.14)
+        border.width: 1
+        border.color: on ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.95) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.12)
+
+        Behavior on color {
+            ColorAnimation {
+                duration: 160
+            }
+        }
+
+        Rectangle {
+            y: 3
+            x: sw.on ? sw.width - width - 3 : 3
+            width: 14
+            height: 14
+            radius: 7
+            antialiasing: true
+            color: sw.on ? "#ffffff" : root.fgAlt
+
+            Behavior on x {
+                NumberAnimation {
+                    duration: 170
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 1.4
+                }
+            }
+        }
+    }
+
+    component Tile: Rectangle {
+        id: tile
+
+        property bool hot: false
+        property bool lit: false
+
+        radius: 12
+        antialiasing: true
+        color: lit ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.24) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, hot ? 0.09 : 0.045)
+        border.width: 1
+        border.color: lit ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.55) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, hot ? 0.16 : 0.08)
+
+        Behavior on color {
+            ColorAnimation {
+                duration: 150
+            }
+        }
+
+        Behavior on border.color {
+            ColorAnimation {
+                duration: 150
+            }
+        }
     }
 
     Column {
         id: column
 
-        width: parent.width
-        spacing: 0
+        x: 20
+        y: 18
+        width: parent.width - 40
+        spacing: 14
 
-        Item {
-            id: head
-
+        Row {
             width: parent.width
-            height: 36
+            height: 26
+            spacing: 10
 
-            Toggle {
-                width: parent.width / 2
-                palette: root.palette
-                label: "sound on critical"
-                on: root.sound
-                onFlipped: root.act("sound")
+            Text {
+                textFormat: Text.PlainText
+                anchors.verticalCenter: parent.verticalCenter
+                text: ""
+                font.family: root.fontFamily
+                font.pixelSize: 17
+                color: root.accent
             }
 
-            Item {
-                x: parent.width / 2
-                width: parent.width / 2
-                height: 32
+            Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
+                text: "Settings"
+                font.family: root.fontFamily
+                font.pixelSize: 16
+                font.weight: Font.Bold
+                font.letterSpacing: 0.4
+                color: root.fg
+            }
+        }
 
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.rightMargin: 6
-                    radius: 9
-                    antialiasing: true
-                    color: spanHit.containsMouse ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.06) : "transparent"
+        Row {
+            width: parent.width
+            spacing: 8
 
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 130
-                        }
-                    }
-                }
+            Tile {
+                id: soundTile
+
+                width: (parent.width - 8) / 2
+                height: 44
+                lit: root.soundOn()
+                hot: soundHit.containsMouse
 
                 Text {
                     textFormat: Text.PlainText
-                    x: 10
+                    x: 14
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "hold alerts"
+                    text: "Sound on critical"
                     font.family: root.fontFamily
-                    font.pixelSize: 13
+                    font.pixelSize: 12
+                    color: root.fg
+                }
+
+                Switch {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    on: root.soundOn()
+                }
+
+                MouseArea {
+                    id: soundHit
+
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.act("sound")
+                }
+            }
+
+            Tile {
+                width: (parent.width - 8) / 2
+                height: 44
+                hot: holdHit.containsMouse
+
+                Text {
+                    textFormat: Text.PlainText
+                    x: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Hold alerts"
+                    font.family: root.fontFamily
+                    font.pixelSize: 12
                     color: root.fg
                 }
 
                 Text {
                     textFormat: Text.PlainText
                     anchors.right: parent.right
-                    anchors.rightMargin: 16
+                    anchors.rightMargin: 14
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.seconds.toFixed(1) + " s"
+                    text: root.holdSeconds().toFixed(1) + " s"
                     font.family: root.fontFamily
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
@@ -220,7 +400,7 @@ Item {
                 }
 
                 MouseArea {
-                    id: spanHit
+                    id: holdHit
 
                     anchors.fill: parent
                     hoverEnabled: true
@@ -230,191 +410,196 @@ Item {
             }
         }
 
-        Grid {
-            id: grid
-
+        Column {
             width: parent.width
-            columns: 2
-            rowSpacing: 0
-            columnSpacing: 0
+            spacing: 8
 
-            Repeater {
-                model: root.rows
-
-                Toggle {
-                    required property var modelData
-
-                    width: grid.width / 2
-                    palette: root.palette
-                    label: modelData.label
-                    on: !!root.producers[modelData.key]
-                    onFlipped: root.act(modelData.key)
-                }
-            }
-        }
-
-        Item {
-            width: parent.width
-            height: 30
-
-            Label {
-                x: 10
-                anchors.verticalCenter: parent.verticalCenter
-                text: "limits"
+            Cap {
+                x: 2
+                text: "Sources"
             }
 
-            Text {
-                textFormat: Text.PlainText
-                x: 70
-                anchors.verticalCenter: parent.verticalCenter
-                text: "pin two to the bar, dim ones have no login"
-                font.family: root.fontFamily
-                font.pixelSize: 12
-                color: root.fgAlt
-            }
-        }
+            Flow {
+                width: parent.width
+                spacing: 6
 
-        Grid {
-            id: limits
+                Repeater {
+                    model: root.sources
 
-            width: parent.width
-            columns: 2
-            rowSpacing: 0
-            columnSpacing: 0
+                    Tile {
+                        id: chip
 
-            Repeater {
-                model: root.providers
+                        required property var modelData
+                        readonly property bool enabled: root.sourceOn(modelData.key)
 
-                Item {
-                    id: prov
+                        width: chipLabel.implicitWidth + 40
+                        height: 30
+                        radius: 15
+                        lit: enabled
+                        hot: chipHit.containsMouse
 
-                    required property var modelData
+                        Rectangle {
+                            x: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 7
+                            height: 7
+                            radius: 3.5
+                            antialiasing: true
+                            color: chip.enabled ? root.accent : root.muted
 
-                    width: limits.width / 2
-                    height: 30
-
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.rightMargin: 6
-                        radius: 9
-                        antialiasing: true
-                        color: provHit.containsMouse ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.06) : "transparent"
-                    }
-
-                    Text {
-                        textFormat: Text.PlainText
-                        x: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 96
-                        elide: Text.ElideRight
-                        text: prov.modelData.name
-                        font.family: root.fontFamily
-                        font.pixelSize: 13
-                        color: prov.modelData.enabled ? root.fg : root.fgAlt
-                        opacity: prov.modelData.detected ? 1 : 0.45
-                    }
-
-                    Rectangle {
-                        anchors.right: parent.right
-                        anchors.rightMargin: 50
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 26
-                        height: 18
-                        radius: 6
-                        antialiasing: true
-                        visible: prov.modelData.enabled
-                        color: prov.modelData.pinned ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.55) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, pinHit.containsMouse ? 0.16 : 0.08)
-
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 140
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 150
+                                }
                             }
                         }
 
                         Text {
+                            id: chipLabel
+
                             textFormat: Text.PlainText
-                            anchors.centerIn: parent
-                            text: "pin"
+                            x: 26
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: chip.modelData.label
                             font.family: root.fontFamily
-                            font.pixelSize: 10
-                            color: prov.modelData.pinned ? root.fg : root.fgAlt
+                            font.pixelSize: 12
+                            color: chip.enabled ? root.fg : root.fgAlt
                         }
 
                         MouseArea {
-                            id: pinHit
+                            id: chipHit
 
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.act("pin:" + prov.modelData.id)
+                            onClicked: root.act(chip.modelData.key)
                         }
-                    }
-
-                    Rectangle {
-                        id: track
-
-                        anchors.right: parent.right
-                        anchors.rightMargin: 14
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 30
-                        height: 16
-                        radius: 8
-                        antialiasing: true
-                        color: prov.modelData.enabled ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.55) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.12)
-
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 180
-                            }
-                        }
-
-                        Rectangle {
-                            y: 3
-                            x: prov.modelData.enabled ? track.width - width - 3 : 3
-                            width: 10
-                            height: 10
-                            radius: 5
-                            antialiasing: true
-                            color: prov.modelData.enabled ? root.fg : root.muted
-
-                            Behavior on x {
-                                NumberAnimation {
-                                    duration: 180
-                                    easing.type: Easing.OutCubic
-                                }
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        id: provHit
-
-                        anchors.fill: parent
-                        anchors.rightMargin: 84
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.act("usage:" + prov.modelData.id)
-                    }
-
-                    MouseArea {
-                        anchors.fill: track
-                        anchors.margins: -5
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.act("usage:" + prov.modelData.id)
                     }
                 }
             }
         }
 
-        Item {
+        Column {
             width: parent.width
-            height: root.providers.length ? 0 : 26
-            visible: height > 0
+            spacing: 8
+
+            Item {
+                width: parent.width
+                height: 14
+
+                Cap {
+                    x: 2
+                    text: "Limits"
+                }
+
+                Text {
+                    textFormat: Text.PlainText
+                    x: 62
+                    text: "pin two to the bar"
+                    font.family: root.fontFamily
+                    font.pixelSize: 10
+                    color: root.muted
+                }
+            }
+
+            Grid {
+                id: limits
+
+                width: parent.width
+                columns: 2
+                spacing: 8
+
+                Repeater {
+                    model: root.providers
+
+                    Tile {
+                        id: prov
+
+                        required property var modelData
+                        readonly property bool enabled: root.providerFlag(modelData, "usage")
+                        readonly property bool pinned: root.providerFlag(modelData, "pin")
+
+                        width: (limits.width - 8) / 2
+                        height: 40
+                        lit: enabled
+                        hot: provHit.containsMouse
+
+                        Text {
+                            textFormat: Text.PlainText
+                            x: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 108
+                            elide: Text.ElideRight
+                            text: prov.modelData.name
+                            font.family: root.fontFamily
+                            font.pixelSize: 12
+                            color: prov.enabled ? root.fg : root.fgAlt
+                            opacity: prov.modelData.detected ? 1 : 0.45
+                        }
+
+                        MouseArea {
+                            id: provHit
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.act("usage:" + prov.modelData.id)
+                        }
+
+                        Rectangle {
+                            id: pin
+
+                            anchors.right: parent.right
+                            anchors.rightMargin: 56
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 32
+                            height: 20
+                            radius: 10
+                            antialiasing: true
+                            visible: prov.enabled
+                            color: prov.pinned ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.85) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, pinHit.containsMouse ? 0.18 : 0.09)
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 140
+                                }
+                            }
+
+                            Text {
+                                textFormat: Text.PlainText
+                                anchors.centerIn: parent
+                                text: "pin"
+                                font.family: root.fontFamily
+                                font.pixelSize: 10
+                                color: prov.pinned ? "#ffffff" : root.fgAlt
+                            }
+
+                            MouseArea {
+                                id: pinHit
+
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.act("pin:" + prov.modelData.id)
+                            }
+                        }
+
+                        Switch {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            on: prov.enabled
+                            dim: !prov.modelData.detected
+                        }
+                    }
+                }
+            }
 
             Text {
+                visible: !root.providers.length
                 textFormat: Text.PlainText
-                x: 10
-                anchors.verticalCenter: parent.verticalCenter
+                x: 2
                 text: "no providers found"
                 font.family: root.fontFamily
                 font.pixelSize: 12
@@ -422,169 +607,159 @@ Item {
             }
         }
 
-        Repeater {
-            model: root.fields
+        Column {
+            width: parent.width
+            spacing: 8
 
-            Item {
-                id: field
+            Cap {
+                x: 2
+                text: "Connections"
+            }
 
-                required property var modelData
+            Repeater {
+                model: root.fields
 
-                width: column.width
-                height: 31
+                Item {
+                    id: field
 
-                Text {
-                    textFormat: Text.PlainText
-                    x: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 104
-                    text: field.modelData.label
-                    font.family: root.fontFamily
-                    font.pixelSize: 13
-                    color: root.fg
-                }
+                    required property var modelData
 
-                Rectangle {
-                    x: 118
-                    width: parent.width - 118 - 10
-                    height: 26
-                    anchors.verticalCenter: parent.verticalCenter
-                    radius: 8
-                    antialiasing: true
-                    color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, input.activeFocus ? 0.12 : 0.07)
-                    border.width: 1
-                    border.color: input.activeFocus ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.7) : "transparent"
+                    width: column.width
+                    height: 34
 
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 140
-                        }
-                    }
-
-                    TextInput {
-                        id: input
-
-                        x: 9
-                        width: parent.width - 18
+                    Text {
+                        textFormat: Text.PlainText
+                        x: 2
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.fieldValue(field.modelData.key)
+                        width: 92
+                        text: field.modelData.label
                         font.family: root.fontFamily
                         font.pixelSize: 12
-                        color: root.fg
-                        selectByMouse: true
-                        selectionColor: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.5)
-                        clip: true
-                        onAccepted: {
-                            root.flip(field.modelData.key + "=" + text);
-                            focus = false;
-                        }
-                        onActiveFocusChanged: {
-                            if (!activeFocus && text !== root.fieldValue(field.modelData.key))
-                                root.flip(field.modelData.key + "=" + text);
-                        }
-
-                        Text {
-                            textFormat: Text.PlainText
-                            anchors.fill: parent
-                            verticalAlignment: Text.AlignVCenter
-                            visible: !input.text.length && !input.activeFocus
-                            text: field.modelData.hint
-                            font: input.font
-                            color: root.fgAlt
-                            opacity: 0.7
-                        }
+                        color: root.fgAlt
                     }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.IBeamCursor
-                        onClicked: input.forceActiveFocus()
+                    Rectangle {
+                        x: 100
+                        width: parent.width - 100
+                        height: 34
+                        radius: 10
+                        antialiasing: true
+                        color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, input.activeFocus ? 0.1 : 0.05)
+                        border.width: 1
+                        border.color: input.activeFocus ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.8) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.09)
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 140
+                            }
+                        }
+
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 140
+                            }
+                        }
+
+                        TextInput {
+                            id: input
+
+                            x: 12
+                            width: parent.width - 24
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.fieldValue(field.modelData.key)
+                            font.family: root.fontFamily
+                            font.pixelSize: 12
+                            color: root.fg
+                            selectByMouse: true
+                            selectionColor: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.5)
+                            clip: true
+                            onAccepted: {
+                                root.flip(field.modelData.key + "=" + text);
+                                focus = false;
+                            }
+                            onActiveFocusChanged: {
+                                if (!activeFocus && text !== root.fieldValue(field.modelData.key))
+                                    root.flip(field.modelData.key + "=" + text);
+                            }
+
+                            Text {
+                                textFormat: Text.PlainText
+                                anchors.fill: parent
+                                verticalAlignment: Text.AlignVCenter
+                                visible: !input.text.length && !input.activeFocus
+                                text: field.modelData.hint
+                                font: input.font
+                                color: root.muted
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.IBeamCursor
+                            onClicked: input.forceActiveFocus()
+                        }
                     }
                 }
             }
         }
 
-        Item {
+        Text {
+            visible: root.missing.length > 0
             width: parent.width
-            height: root.missing.length ? 22 : 0
-            visible: height > 0
-
-            Text {
-                textFormat: Text.PlainText
-                x: 10
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 20
-                elide: Text.ElideRight
-                text: "missing tools: " + root.missing.join(", ")
-                font.family: root.fontFamily
-                font.pixelSize: 11
-                color: root.warn
-            }
-        }
-
-        Item {
-            width: parent.width
-            height: 10
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+            text: "missing tools: " + root.missing.join(", ")
+            font.family: root.fontFamily
+            font.pixelSize: 11
+            color: root.warn
         }
 
         Row {
             id: foot
 
             width: parent.width
-            height: 30
-            spacing: 10
+            spacing: 8
 
             Repeater {
                 model: [
                     {
                         "key": "notifications",
-                        "label": "notification centre"
+                        "label": "Notification centre"
                     },
                     {
                         "key": "clear",
-                        "label": "clear tasks"
+                        "label": "Clear tasks"
                     }
                 ]
 
-                Rectangle {
+                Tile {
+                    id: button
+
                     required property var modelData
 
-                    width: (foot.width - 10) / 2 - 3
-                    height: 30
-                    radius: 10
-                    antialiasing: true
-                    color: press.containsMouse ? Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.12) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.05)
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 130
-                        }
-                    }
+                    width: (foot.width - 8) / 2
+                    height: 36
+                    hot: buttonHit.containsMouse
 
                     Text {
                         textFormat: Text.PlainText
                         anchors.centerIn: parent
-                        text: parent.modelData.label
+                        text: button.modelData.label
                         font.family: root.fontFamily
                         font.pixelSize: 12
-                        color: root.fgAlt
+                        color: buttonHit.containsMouse ? root.fg : root.fgAlt
                     }
 
                     MouseArea {
-                        id: press
+                        id: buttonHit
 
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.act(parent.modelData.key)
+                        onClicked: root.act(button.modelData.key)
                     }
                 }
             }
-        }
-
-        Item {
-            width: parent.width
-            height: 6
         }
     }
 }

@@ -76,9 +76,6 @@ Item {
 
     readonly property int shelfCount: shelfGrid.items.length
     property bool shelfOpen: false
-    property string panel: "shelf"
-    property var settings: null
-    property string pluginDir: ""
 
     property real glass: shelfShape ? 1 : 0
     readonly property color glassTint: mix(baseColor, bg, glass * 0.55)
@@ -90,7 +87,7 @@ Item {
         }
     }
 
-    readonly property int shelfHeight: 44 + (panel === "settings" ? tune.implicitHeight : shelfGrid.implicitHeight) + 24
+    readonly property int shelfHeight: 44 + shelfGrid.implicitHeight + 24
     readonly property bool shelfMoving: pill.height > 28
     property int shelfOpenHeight: 27
 
@@ -123,7 +120,6 @@ Item {
 
 
     signal shelfToggled()
-    signal tuneFlip(string key)
     signal shelfCopy(string name)
     signal shelfReveal(string name)
     signal shelfDrop(string name)
@@ -156,18 +152,6 @@ Item {
     }
 
     function descriptor() {
-        if (shelfShape && panel === "settings")
-            return {
-                "struct": "shelf",
-                "key": "tune",
-                "icon": "\uf013",
-                "iconSize": 15,
-                "iconColor": accent,
-                "provider": "",
-                "tone": "plain",
-                "showDot": false,
-                "text": "settings"
-            };
         if (shelfShape)
             return {
                 "struct": "shelf",
@@ -333,7 +317,7 @@ Item {
         color: Qt.rgba(view.glassTint.r, view.glassTint.g, view.glassTint.b, 1 - 0.38 * view.glass)
         border.width: 1 + view.glass
         border.color: Qt.rgba(view.fg.r, view.fg.g, view.fg.b, 0.18 + 0.10 * view.glass)
-        width: view.shelfShape ? (view.panel === "settings" ? tune.implicitWidth + 48 : shelfGrid.implicitWidth + 48) : measure.implicitWidth + view.nextPadLeft + view.nextPadRight
+        width: view.shelfShape ? shelfGrid.implicitWidth + 48 : measure.implicitWidth + view.nextPadLeft + view.nextPadRight
 
         Rectangle {
             id: sweep
@@ -531,29 +515,6 @@ Item {
 
         }
 
-        Settings {
-            id: tune
-
-            x: 24
-            y: 44
-            width: implicitWidth
-            height: implicitHeight
-            visible: view.panel === "settings" && opacity > 0.01
-            opacity: view.shelfContent && view.panel === "settings" ? 1 : 0
-            palette: view.palette
-            settings: view.settings
-            pluginDir: view.pluginDir
-            missing: view.scene.missing || []
-            onFlip: key => view.tuneFlip(key)
-
-            Behavior on opacity {
-                NumberAnimation {
-                    duration: view.shelfContent ? 200 : 90
-                    easing.type: Easing.OutCubic
-                }
-            }
-        }
-
         Shelf {
             id: shelfGrid
 
@@ -561,8 +522,8 @@ Item {
             y: 44
             width: implicitWidth
             height: implicitHeight
-            opacity: view.shelfContent && view.panel === "shelf" ? 1 : 0
-            visible: view.panel === "shelf" && opacity > 0.01
+            opacity: view.shelfContent ? 1 : 0
+            visible: opacity > 0.01
             shelf: view.scene.shelf || null
             palette: view.palette
             onCopyItem: name => view.shelfCopy(name)

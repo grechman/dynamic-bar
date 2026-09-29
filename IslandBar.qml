@@ -45,11 +45,12 @@ Scope {
         }
 
         function state(): string {
-            return root.usageOpen ? "usage" : root.systemOpen ? "system" : root.musicOpen ? "music" : root.shelfOpen ? root.islandPanel : "closed";
+            return root.usageOpen ? "usage" : root.systemOpen ? "system" : root.musicOpen ? "music" : root.settingsOpen ? "settings" : root.shelfOpen ? "shelf" : "closed";
         }
     }
 
     function openPanel(name) {
+        settingsOpen = false;
         shelfOpen = false;
         usageOpen = false;
         systemOpen = false;
@@ -60,10 +61,10 @@ Scope {
             systemOpen = true;
         else if (name === "music")
             musicOpen = true;
-        else if (name === "settings" || name === "shelf") {
-            islandPanel = name;
+        else if (name === "settings")
+            settingsOpen = true;
+        else if (name === "shelf")
             shelfOpen = true;
-        }
     }
 
     FontLoader {
@@ -188,7 +189,7 @@ Scope {
     }
 
     property bool shelfOpen: false
-    property string islandPanel: "shelf"
+    property bool settingsOpen: false
 
     property bool systemOpen: false
     property bool usageOpen: false
@@ -198,6 +199,16 @@ Scope {
 
     onShelfOpenChanged: {
         if (shelfOpen) {
+            settingsOpen = false;
+            musicOpen = false;
+            systemOpen = false;
+            usageOpen = false;
+        }
+    }
+
+    onSettingsOpenChanged: {
+        if (settingsOpen) {
+            shelfOpen = false;
             musicOpen = false;
             systemOpen = false;
             usageOpen = false;
@@ -206,6 +217,7 @@ Scope {
 
     onSystemOpenChanged: {
         if (systemOpen) {
+            settingsOpen = false;
             musicOpen = false;
             shelfOpen = false;
             usageOpen = false;
@@ -226,6 +238,7 @@ Scope {
 
     onUsageOpenChanged: {
         if (usageOpen) {
+            settingsOpen = false;
             musicOpen = false;
             shelfOpen = false;
             systemOpen = false;
@@ -234,6 +247,7 @@ Scope {
 
     onMusicOpenChanged: {
         if (musicOpen) {
+            settingsOpen = false;
             shelfOpen = false;
             systemOpen = false;
             usageOpen = false;
@@ -521,29 +535,123 @@ Scope {
 
                 IslandView {
                     id: island
-                    pluginDir: root.pluginDir
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: 4
                     width: 700
                     scene: root.scene
                     clockText: Qt.formatDateTime(sysClock.date, "HH:mm")
                     onBubbleActivated: half => root.clickBubble(half)
-                    panel: root.islandPanel
-                    settings: root.scene.settings || null
-                    onTuneFlip: key => root.flipSetting(key)
-                    onPillActivated: {
-                        root.islandPanel = "settings";
-                        root.shelfOpen = !root.shelfOpen;
-                    }
+                    onPillActivated: root.settingsOpen = !root.settingsOpen
                     onPillAlternate: dateClick.running = true
                     shelfOpen: root.shelfOpen
-                    onShelfToggled: {
-                        root.islandPanel = "shelf";
-                        root.shelfOpen = !root.shelfOpen;
-                    }
+                    onShelfToggled: root.shelfOpen = !root.shelfOpen
                     onShelfCopy: name => root.shelfAction("copy", name)
                     onShelfReveal: name => root.shelfAction("open", name)
                     onShelfDrop: name => root.shelfAction("remove", name)
+                }
+            }
+
+            PanelWindow {
+                id: settingsWindow
+                screen: unit.modelData
+                visible: !root.hidden && !root.scene.fullscreen && (root.settingsOpen || card.opacity > 0.01)
+
+                anchors {
+                    top: !root.bottom
+                    bottom: root.bottom
+                }
+                margins.top: root.bottom ? 0 : 7
+                margins.bottom: root.bottom ? 7 : 0
+                implicitWidth: tune.implicitWidth + 2 * inset
+                implicitHeight: tune.implicitHeight + 2 * inset
+                mask: Region {
+                    x: settingsWindow.inset
+                    y: settingsWindow.inset
+                    width: tune.implicitWidth
+                    height: tune.implicitHeight
+                }
+                color: "transparent"
+                exclusionMode: ExclusionMode.Ignore
+                WlrLayershell.layer: WlrLayer.Top
+                WlrLayershell.keyboardFocus: root.settingsOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
+                readonly property int inset: 36
+
+                Timer {
+                    id: settingsArm
+
+                    interval: 80
+                    repeat: false
+                    running: root.settingsOpen
+                    onTriggered: settingsGrab.armed = true
+                }
+
+                Connections {
+                    target: root
+
+                    function onSettingsOpenChanged() {
+                        if (!root.settingsOpen)
+                            settingsGrab.armed = false;
+                    }
+                }
+
+                HyprlandFocusGrab {
+                    id: settingsGrab
+
+                    property bool armed: false
+
+                    windows: [settingsWindow, panel]
+                    active: root.settingsOpen && armed
+                    onCleared: {
+                        if (!root.held)
+                            root.settingsOpen = false;
+                    }
+                }
+
+                Shortcut {
+                    sequence: "Escape"
+                    context: Qt.WindowShortcut
+                    enabled: root.settingsOpen
+                    onActivated: root.settingsOpen = false
+                }
+
+                Glass {
+                    id: card
+
+                    x: settingsWindow.inset
+                    y: settingsWindow.inset
+                    width: tune.implicitWidth
+                    height: tune.implicitHeight
+                    palette: root.palette
+                    opacity: root.settingsOpen ? 1 : 0
+                    scale: root.settingsOpen ? 1 : 0.94
+                    transformOrigin: root.bottom ? Item.Bottom : Item.Top
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: root.settingsOpen ? 200 : 120
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: root.settingsOpen ? 260 : 120
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    Settings {
+                        id: tune
+
+                        anchors.fill: parent
+                        palette: root.palette
+                        settings: root.scene.settings || null
+                        missing: root.scene.missing || []
+                        pluginDir: root.pluginDir
+                        active: root.settingsOpen
+                        onFlip: key => root.flipSetting(key)
+                    }
                 }
             }
 
