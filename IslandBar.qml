@@ -176,6 +176,7 @@ Scope {
 
     property bool shelfOpen: false
     property bool settingsOpen: false
+    property double settingsCleared: 0
 
     property bool systemOpen: false
     property bool usageOpen: false
@@ -526,7 +527,10 @@ Scope {
                     scene: root.scene
                     clockText: Qt.formatDateTime(sysClock.date, "HH:mm")
                     onBubbleActivated: half => root.clickBubble(half)
-                    onPillActivated: root.settingsOpen = !root.settingsOpen
+                    onPillActivated: {
+                        if (Date.now() - root.settingsCleared > 300)
+                            root.settingsOpen = !root.settingsOpen;
+                    }
                     onPillAlternate: dateClick.running = true
                     shelfOpen: root.shelfOpen
                     onShelfToggled: root.shelfOpen = !root.shelfOpen
@@ -539,7 +543,7 @@ Scope {
             PanelWindow {
                 id: settingsWindow
                 screen: unit.modelData
-                visible: !root.hidden && !root.scene.fullscreen && (root.settingsOpen || card.opacity > 0.01)
+                visible: !root.hidden && !root.scene.fullscreen
 
                 anchors {
                     top: !root.bottom
@@ -585,9 +589,10 @@ Scope {
 
                     property bool armed: false
 
-                    windows: [settingsWindow, panel]
+                    windows: [settingsWindow]
                     active: root.settingsOpen && armed
                     onCleared: {
+                        root.settingsCleared = Date.now();
                         if (!root.held)
                             root.settingsOpen = false;
                     }
@@ -608,6 +613,7 @@ Scope {
                     width: tune.implicitWidth
                     height: tune.implicitHeight
                     palette: root.palette
+                    visible: root.settingsOpen || opacity > 0.01
                     opacity: root.settingsOpen ? 1 : 0
                     scale: root.settingsOpen ? 1 : 0.94
                     transformOrigin: root.bottom ? Item.Bottom : Item.Top
