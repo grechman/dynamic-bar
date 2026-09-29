@@ -153,6 +153,9 @@ Item {
         else if (key === "seconds") {
             var now = holdSeconds();
             remember(key, now >= 5 ? 2 : now + 0.5);
+        } else if (key === "seconds-") {
+            var cur = holdSeconds();
+            remember("seconds", cur <= 2 ? 5 : cur - 0.5);
         } else if (key.indexOf("usage:") === 0 || key.indexOf("pin:") === 0) {
             var kind = key.split(":")[0];
             for (var i = 0; i < providers.length; i++)
@@ -167,13 +170,15 @@ Item {
     onActiveChanged: {
         if (active)
             refresh();
+        else
+            forceActiveFocus();
     }
 
     onSettingsChanged: {
         var next = ({});
         var changed = false;
         for (var k in local) {
-            var live = k === "sound" ? !!(settings && settings.sound) : k === "seconds" ? holdSeconds() : k in producers ? !!producers[k] : null;
+            var live = k === "sound" ? !!(settings && settings.sound) : k === "seconds" ? (settings && settings.seconds ? settings.seconds : 3) : k in producers ? !!producers[k] : null;
             if (live !== null && live === local[k])
                 changed = true;
             else
@@ -279,10 +284,11 @@ Item {
 
         property bool hot: false
         property bool lit: false
+        property bool down: false
 
         radius: 12
         antialiasing: true
-        color: lit ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.24) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, hot ? 0.09 : 0.045)
+        color: lit ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, down ? 0.36 : 0.24) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, down ? 0.14 : hot ? 0.09 : 0.045)
         border.width: 1
         border.color: lit ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.55) : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, hot ? 0.16 : 0.08)
 
@@ -315,7 +321,7 @@ Item {
             Text {
                 textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
-                text: ""
+                text: ""
                 font.family: root.fontFamily
                 font.pixelSize: 17
                 color: root.accent
@@ -344,6 +350,7 @@ Item {
                 height: 44
                 lit: root.soundOn()
                 hot: soundHit.containsMouse
+                down: soundHit.pressed
 
                 Text {
                     textFormat: Text.PlainText
@@ -376,6 +383,7 @@ Item {
                 width: (parent.width - 8) / 2
                 height: 44
                 hot: holdHit.containsMouse
+                down: holdHit.pressed
 
                 Text {
                     textFormat: Text.PlainText
@@ -404,8 +412,9 @@ Item {
 
                     anchors.fill: parent
                     hoverEnabled: true
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.act("seconds")
+                    onClicked: mouse => root.act(mouse.button === Qt.RightButton ? "seconds-" : "seconds")
                 }
             }
         }
@@ -437,6 +446,7 @@ Item {
                         radius: 15
                         lit: enabled
                         hot: chipHit.containsMouse
+                        down: chipHit.pressed
 
                         Rectangle {
                             x: 12
@@ -523,6 +533,7 @@ Item {
                         height: 40
                         lit: enabled
                         hot: provHit.containsMouse
+                        down: provHit.pressed
 
                         Text {
                             textFormat: Text.PlainText
@@ -660,25 +671,34 @@ Item {
                             }
                         }
 
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.IBeamCursor
+                            onClicked: input.forceActiveFocus()
+                        }
+
                         TextInput {
                             id: input
+
+                            readonly property string stored: root.fieldValue(field.modelData.key)
 
                             x: 12
                             width: parent.width - 24
                             anchors.verticalCenter: parent.verticalCenter
-                            text: root.fieldValue(field.modelData.key)
                             font.family: root.fontFamily
                             font.pixelSize: 12
                             color: root.fg
                             selectByMouse: true
                             selectionColor: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.5)
                             clip: true
-                            onAccepted: {
-                                root.flip(field.modelData.key + "=" + text);
-                                focus = false;
+                            Component.onCompleted: text = stored
+                            onStoredChanged: {
+                                if (!activeFocus)
+                                    text = stored;
                             }
+                            onAccepted: focus = false
                             onActiveFocusChanged: {
-                                if (!activeFocus && text !== root.fieldValue(field.modelData.key))
+                                if (!activeFocus && text !== stored)
                                     root.flip(field.modelData.key + "=" + text);
                             }
 
@@ -691,12 +711,6 @@ Item {
                                 font: input.font
                                 color: root.muted
                             }
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.IBeamCursor
-                            onClicked: input.forceActiveFocus()
                         }
                     }
                 }
@@ -740,6 +754,7 @@ Item {
                     width: (foot.width - 8) / 2
                     height: 36
                     hot: buttonHit.containsMouse
+                    down: buttonHit.pressed
 
                     Text {
                         textFormat: Text.PlainText
