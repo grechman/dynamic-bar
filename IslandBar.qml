@@ -50,6 +50,8 @@ Scope {
     }
 
     function openPanel(name) {
+        var focused = Hyprland.focusedMonitor;
+        openScreen = focused ? focused.name : (Quickshell.screens.length ? Quickshell.screens[0].name : "");
         settingsOpen = false;
         shelfOpen = false;
         usageOpen = false;
@@ -174,6 +176,7 @@ Scope {
         return false;
     }
 
+    property string openScreen: ""
     property bool shelfOpen: false
     property bool settingsOpen: false
     property double settingsCleared: 0
@@ -264,6 +267,16 @@ Scope {
         Scope {
             id: unit
             required property var modelData
+            readonly property bool here: root.openScreen === modelData.name
+            readonly property bool usageHere: root.usageOpen && here
+            readonly property bool shelfHere: root.shelfOpen && here
+            readonly property bool settingsHere: root.settingsOpen && here
+            readonly property bool systemHere: root.systemOpen && here
+            readonly property bool musicHere: root.musicOpen && here
+
+            function claim() {
+                root.openScreen = modelData.name;
+            }
 
             PanelWindow {
                 id: backdrop
@@ -393,19 +406,19 @@ Scope {
                 color: "transparent"
                 exclusionMode: ExclusionMode.Ignore
                 WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.keyboardFocus: root.usageOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+                WlrLayershell.keyboardFocus: unit.usageHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
                 Shortcut {
                     sequence: "Escape"
                     context: Qt.WindowShortcut
-                    enabled: root.usageOpen
+                    enabled: unit.usageHere
                     onActivated: root.usageOpen = false
                 }
 
                 HyprlandFocusGrab {
                     id: usageGrab
                     windows: [usageWindow]
-                    active: root.usageOpen
+                    active: unit.usageHere
                     onCleared: {
                         if (!root.held)
                             root.usageOpen = false;
@@ -418,8 +431,11 @@ Scope {
                     y: 3
                     pluginDir: root.pluginDir
                     palette: root.palette
-                    open: root.usageOpen
-                    onToggled: root.usageOpen = !root.usageOpen
+                    open: unit.usageHere
+                    onToggled: {
+                        unit.claim();
+                        root.usageOpen = !unit.usageHere;
+                    }
                 }
             }
 
@@ -459,7 +475,7 @@ Scope {
                 color: "transparent"
                 exclusionMode: ExclusionMode.Ignore
                 WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.keyboardFocus: root.shelfOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+                WlrLayershell.keyboardFocus: unit.shelfHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
                 property bool dragHold: false
 
@@ -468,7 +484,8 @@ Scope {
 
                     onEntered: drag => {
                         drag.accept(Qt.CopyAction);
-                        if (!root.shelfOpen) {
+                        if (!unit.shelfHere) {
+                            unit.claim();
                             panel.dragHold = true;
                             root.shelfOpen = true;
                         }
@@ -493,7 +510,7 @@ Scope {
                 HyprlandFocusGrab {
                     id: shelfGrab
                     windows: [panel]
-                    active: root.shelfOpen && !panel.dragHold
+                    active: unit.shelfHere && !panel.dragHold
                     onCleared: {
                         if (!root.held)
                             root.shelfOpen = false;
@@ -503,13 +520,13 @@ Scope {
                 Shortcut {
                     sequence: "Escape"
                     context: Qt.WindowShortcut
-                    enabled: root.shelfOpen
+                    enabled: unit.shelfHere
                     onActivated: root.shelfOpen = false
                 }
 
                 Item {
                     anchors.fill: parent
-                    focus: root.shelfOpen
+                    focus: unit.shelfHere
 
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
@@ -528,12 +545,17 @@ Scope {
                     clockText: Qt.formatDateTime(sysClock.date, "HH:mm")
                     onBubbleActivated: half => root.clickBubble(half)
                     onPillActivated: {
-                        if (Date.now() - root.settingsCleared > 300)
-                            root.settingsOpen = !root.settingsOpen;
+                        if (Date.now() - root.settingsCleared > 300) {
+                            unit.claim();
+                            root.settingsOpen = !unit.settingsHere;
+                        }
                     }
                     onPillAlternate: dateClick.running = true
-                    shelfOpen: root.shelfOpen
-                    onShelfToggled: root.shelfOpen = !root.shelfOpen
+                    shelfOpen: unit.shelfHere
+                    onShelfToggled: {
+                        unit.claim();
+                        root.shelfOpen = !unit.shelfHere;
+                    }
                     onShelfCopy: name => root.shelfAction("copy", name)
                     onShelfReveal: name => root.shelfAction("open", name)
                     onShelfDrop: name => root.shelfAction("remove", name)
@@ -556,13 +578,13 @@ Scope {
                 mask: Region {
                     x: settingsWindow.inset
                     y: settingsWindow.inset
-                    width: root.settingsOpen ? tune.implicitWidth : 0
-                    height: root.settingsOpen ? tune.implicitHeight : 0
+                    width: unit.settingsHere ? tune.implicitWidth : 0
+                    height: unit.settingsHere ? tune.implicitHeight : 0
                 }
                 color: "transparent"
                 exclusionMode: ExclusionMode.Ignore
                 WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.keyboardFocus: root.settingsOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+                WlrLayershell.keyboardFocus: unit.settingsHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
                 readonly property int inset: 36
 
@@ -571,15 +593,15 @@ Scope {
 
                     interval: 80
                     repeat: false
-                    running: root.settingsOpen
+                    running: unit.settingsHere
                     onTriggered: settingsGrab.armed = true
                 }
 
                 Connections {
-                    target: root
+                    target: unit
 
-                    function onSettingsOpenChanged() {
-                        if (!root.settingsOpen)
+                    function onSettingsHereChanged() {
+                        if (!unit.settingsHere)
                             settingsGrab.armed = false;
                     }
                 }
@@ -590,7 +612,7 @@ Scope {
                     property bool armed: false
 
                     windows: [settingsWindow]
-                    active: root.settingsOpen && armed
+                    active: unit.settingsHere && armed
                     onCleared: {
                         root.settingsCleared = Date.now();
                         if (!root.held)
@@ -601,7 +623,7 @@ Scope {
                 Shortcut {
                     sequence: "Escape"
                     context: Qt.WindowShortcut
-                    enabled: root.settingsOpen
+                    enabled: unit.settingsHere
                     onActivated: root.settingsOpen = false
                 }
 
@@ -613,21 +635,21 @@ Scope {
                     width: tune.implicitWidth
                     height: tune.implicitHeight
                     palette: root.palette
-                    visible: root.settingsOpen || opacity > 0.01
-                    opacity: root.settingsOpen ? 1 : 0
-                    scale: root.settingsOpen ? 1 : 0.94
+                    visible: unit.settingsHere || opacity > 0.01
+                    opacity: unit.settingsHere ? 1 : 0
+                    scale: unit.settingsHere ? 1 : 0.94
                     transformOrigin: root.bottom ? Item.Bottom : Item.Top
 
                     Behavior on opacity {
                         NumberAnimation {
-                            duration: root.settingsOpen ? 200 : 120
+                            duration: unit.settingsHere ? 200 : 120
                             easing.type: Easing.OutCubic
                         }
                     }
 
                     Behavior on scale {
                         NumberAnimation {
-                            duration: root.settingsOpen ? 260 : 120
+                            duration: unit.settingsHere ? 260 : 120
                             easing.type: Easing.OutCubic
                         }
                     }
@@ -640,7 +662,7 @@ Scope {
                         settings: root.scene.settings || null
                         missing: root.scene.missing || []
                         pluginDir: root.pluginDir
-                        active: root.settingsOpen
+                        active: unit.settingsHere
                         onFlip: key => root.flipSetting(key)
                     }
                 }
@@ -668,12 +690,12 @@ Scope {
                 color: "transparent"
                 exclusionMode: ExclusionMode.Ignore
                 WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.keyboardFocus: root.systemOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+                WlrLayershell.keyboardFocus: unit.systemHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
                 HyprlandFocusGrab {
                     id: systemGrab
                     windows: [systemPanel]
-                    active: root.systemOpen
+                    active: unit.systemHere
                     onCleared: {
                         if (!root.held)
                             root.systemOpen = false;
@@ -683,7 +705,7 @@ Scope {
                 Shortcut {
                     sequence: "Escape"
                     context: Qt.WindowShortcut
-                    enabled: root.systemOpen
+                    enabled: unit.systemHere
                     onActivated: root.systemOpen = false
                 }
 
@@ -694,8 +716,11 @@ Scope {
                     sys: root.scene.sys || null
                     pluginDir: root.pluginDir
                     palette: root.palette
-                    open: root.systemOpen
-                    onToggled: root.systemOpen = !root.systemOpen
+                    open: unit.systemHere
+                    onToggled: {
+                        unit.claim();
+                        root.systemOpen = !unit.systemHere;
+                    }
                 }
             }
 
@@ -721,18 +746,18 @@ Scope {
                 color: "transparent"
                 exclusionMode: ExclusionMode.Ignore
                 WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.keyboardFocus: root.musicOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+                WlrLayershell.keyboardFocus: unit.musicHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
                 Shortcut {
                     sequence: "Escape"
                     context: Qt.WindowShortcut
-                    enabled: root.musicOpen
+                    enabled: unit.musicHere
                     onActivated: root.musicOpen = false
                 }
 
                 HyprlandFocusGrab {
                     windows: [musicPanel]
-                    active: root.musicOpen
+                    active: unit.musicHere
                     onCleared: {
                         if (!root.held)
                             root.musicOpen = false;
@@ -768,7 +793,7 @@ Scope {
 
                     Behavior on anchors.rightMargin {
                         NumberAnimation {
-                            duration: root.systemOpen ? 320 : 360
+                            duration: unit.systemHere ? 320 : 360
                             easing.type: Easing.InOutCubic
                         }
                     }
@@ -781,8 +806,11 @@ Scope {
                     onArt: root.clickMusic("focus")
                     onMute: root.clickMusic("mute")
                     onLike: root.clickMusic("like")
-                    onExpand: root.musicOpen = !root.musicOpen
-                    open: root.musicOpen
+                    onExpand: {
+                        unit.claim();
+                        root.musicOpen = !unit.musicHere;
+                    }
+                    open: unit.musicHere
                     onSeek: seconds => root.clickMusic("seek:" + seconds.toFixed(1))
                 }
             }
