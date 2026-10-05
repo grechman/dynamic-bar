@@ -123,7 +123,7 @@ MUSIC_VOLUME = f"{STATE_DIR}/music-volume"
 MUSIC_RESTART = 1.4
 MUSIC = {}
 MUSIC_LOCK = threading.Lock()
-FULLSCREEN = False
+FULLSCREEN = []
 REMOTE_ACTIONS = {"t3": [], "claude": [], "codex": []}
 REMOTE_ACTIONS_LOCK = threading.Lock()
 REMOTE_ACTIONS_VERSION = 0
@@ -1717,13 +1717,21 @@ def hypr_events_socket():
     return None
 
 
-def workspace_is_full():
+def fullscreen_monitors():
     try:
-        return bool(
-            json.loads(run(["hyprctl", "activeworkspace", "-j"]))["hasfullscreen"]
-        )
+        monitors = json.loads(run(["hyprctl", "monitors", "-j"]))
+        clients = json.loads(run(["hyprctl", "clients", "-j"]))
+        shown = {monitor["activeWorkspace"]["id"]: monitor["name"] for monitor in monitors}
+        return sorted({
+            shown[client["workspace"]["id"]]
+            for client in clients
+            if client.get("workspace", {}).get("id") in shown
+            and client.get("mapped", True)
+            and not client.get("hidden", False)
+            and int(client.get("fullscreen", 0)) & 2
+        })
     except (KeyError, TypeError, ValueError):
-        return False
+        return []
 
 
 def fullscreen_thread():
@@ -1736,6 +1744,8 @@ def fullscreen_thread():
         "closewindow>>",
         "movewindow>>",
         "changefloatingmode>>",
+        "moveworkspace>>",
+        "monitorremoved>>",
     )
     while True:
         path = hypr_events_socket()
@@ -1745,7 +1755,7 @@ def fullscreen_thread():
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as events:
                 events.connect(path)
-                FULLSCREEN = workspace_is_full()
+                FULLSCREEN = fullscreen_monitors()
                 rest = b""
                 while True:
                     chunk = events.recv(4096)
@@ -1755,7 +1765,7 @@ def fullscreen_thread():
                     while b"\n" in rest:
                         line, rest = rest.split(b"\n", 1)
                         if line.decode(errors="ignore").startswith(watched):
-                            FULLSCREEN = workspace_is_full()
+                            FULLSCREEN = fullscreen_monitors()
         except OSError:
             pass
         time.sleep(3)

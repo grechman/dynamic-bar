@@ -268,6 +268,7 @@ Scope {
             id: unit
             required property var modelData
             readonly property bool here: root.openScreen === modelData.name
+            readonly property bool fullHere: (root.scene.fullscreen || []).indexOf(modelData.name) >= 0
             readonly property bool usageHere: root.usageOpen && here
             readonly property bool shelfHere: root.shelfOpen && here
             readonly property bool settingsHere: root.settingsOpen && here
@@ -387,7 +388,7 @@ Scope {
             PanelWindow {
                 id: usageWindow
                 screen: unit.modelData
-                visible: !root.hidden && !root.scene.fullscreen
+                visible: !root.hidden && !unit.fullHere
 
                 anchors {
                     top: !root.bottom
@@ -442,7 +443,7 @@ Scope {
             PanelWindow {
                 id: panel
                 screen: unit.modelData
-                visible: !root.hidden && !root.scene.fullscreen
+                visible: !root.hidden && !unit.fullHere
 
                 anchors {
                     top: !root.bottom
@@ -565,7 +566,7 @@ Scope {
             PanelWindow {
                 id: settingsWindow
                 screen: unit.modelData
-                visible: !root.hidden && !root.scene.fullscreen
+                visible: !root.hidden && !unit.fullHere
 
                 anchors {
                     top: !root.bottom
@@ -671,7 +672,7 @@ Scope {
             PanelWindow {
                 id: systemPanel
                 screen: unit.modelData
-                visible: !root.hidden && !root.scene.fullscreen
+                visible: !root.hidden && !unit.fullHere
 
                 anchors {
                     top: !root.bottom
@@ -727,7 +728,7 @@ Scope {
             PanelWindow {
                 id: musicPanel
                 screen: unit.modelData
-                visible: !root.hidden && music.width > 2 && !root.scene.fullscreen
+                visible: !root.hidden && music.width > 2 && !unit.fullHere
 
                 anchors {
                     top: !root.bottom
@@ -818,7 +819,7 @@ Scope {
             PanelWindow {
                 id: tipPanel
                 screen: unit.modelData
-                visible: !root.hidden && !root.scene.fullscreen && (calendarTip.active || bubbleTip.active)
+                visible: !root.hidden && !unit.fullHere && (calendarTip.active || bubbleTip.active)
 
                 anchors {
                     top: !root.bottom
