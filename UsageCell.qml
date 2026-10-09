@@ -21,6 +21,7 @@ Item {
     readonly property color fgAlt: palette.fg_alt || "#a6a69c"
     readonly property color muted: palette.muted || "#625e5a"
     readonly property color accent: palette.accent || "#658594"
+    readonly property color infoAlt: palette.info_alt || "#949fb5"
     readonly property color ok: palette.ok || "#87a987"
     readonly property color warn: palette.warn || "#c4b28a"
     readonly property color crit: palette.crit || "#c4746e"
@@ -49,16 +50,10 @@ Item {
         return out;
     }
 
-    function tagOf(provider, slice) {
-        if (provider.windows.length > 1)
-            return slice.tag;
-        var banked = slice.resets_available || 0;
-        return banked > 3 ? banked + "\u2022" : "\u2022".repeat(banked);
-    }
-
     function groupWidth(provider) {
-        var tagless = provider.windows.length === 1 && !tagOf(provider, provider.windows[0]);
-        return markSlot + provider.windows.length * windowSlot - 7 - (tagless ? 18 : 0);
+        if (provider.windows.length !== 1)
+            return markSlot + provider.windows.length * windowSlot - 7;
+        return markSlot + 22;
     }
 
     readonly property int groupsWidth: {
@@ -82,6 +77,10 @@ Item {
             return fgAlt;
         var tone = slice.state === "crit" ? crit : slice.state === "warn" ? warn : ok;
         return slice.stale ? Qt.rgba(tone.r, tone.g, tone.b, 0.55) : tone;
+    }
+
+    function providerTint(provider) {
+        return provider && provider.id === "claude" ? claudeMark : infoAlt;
     }
 
     readonly property string blockCost: {
@@ -257,7 +256,7 @@ Item {
         radius: cell.shape ? 26 : height / 2
         antialiasing: true
         clip: true
-        color: Qt.rgba(cell.glassTint.r, cell.glassTint.g, cell.glassTint.b, 1 - 0.38 * cell.glass)
+        color: cell.mix(cell.glassTint, cell.infoAlt, 0.06)
         border.width: 1 + cell.glass
         border.color: Qt.rgba(cell.fg.r, cell.fg.g, cell.fg.b, 0.20 + 0.10 * cell.glass)
 
@@ -343,6 +342,7 @@ Item {
                         Row {
                             required property var modelData
 
+                            readonly property bool single: group.modelData.windows.length === 1
                             anchors.verticalCenter: parent.verticalCenter
                             height: 22
                             spacing: 3
@@ -352,13 +352,13 @@ Item {
                                 id: tagText
 
                                 anchors.baseline: number.baseline
-                                visible: text !== ""
-                                width: 15
-                                horizontalAlignment: group.modelData.windows.length > 1 ? Text.AlignLeft : Text.AlignRight
-                                text: cell.tagOf(group.modelData, parent.modelData)
+                                visible: !parent.single
+                                width: implicitWidth
+                                text: parent.modelData.tag
                                 font.family: cell.fontFamily
                                 font.pixelSize: 11
-                                color: cell.fgAlt
+                                font.weight: Font.DemiBold
+                                color: cell.providerTint(group.modelData)
                             }
 
                             Text {
@@ -374,6 +374,7 @@ Item {
                                 font.weight: Font.DemiBold
                                 color: cell.tintOf(parent.modelData)
                             }
+
                         }
                     }
                 }
